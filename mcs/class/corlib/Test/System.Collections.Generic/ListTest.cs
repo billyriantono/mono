@@ -195,7 +195,7 @@ namespace MonoTests.System.Collections.Generic {
 			list.Insert(0, new object());
 		}
 
-		[Test, ExpectedException(typeof (ArgumentException))]
+		[Test, ExpectedException(typeof (ArgumentNullException))]
 		public void IList_InsertInvalidType2 ()
 		{
 			IList list = _list1 as IList;
@@ -209,7 +209,7 @@ namespace MonoTests.System.Collections.Generic {
 			list.Add(new object());
 		}
 
-		[Test, ExpectedException(typeof (ArgumentException))]
+		[Test, ExpectedException(typeof (ArgumentNullException))]
 		public void IList_AddInvalidType2()
 		{
 			IList list = _list1 as IList;
@@ -342,28 +342,6 @@ namespace MonoTests.System.Collections.Generic {
 			Assert.AreEqual (- (l.Count + 1), l.BinarySearch (int.MaxValue));
 		}
 
-#if !NET_4_0 // FIXME: the blob contains the 2.0 mscorlib version
-
-		[Test]
-		public void SerializeTest ()
-		{
-			List <int> list = new List <int> ();
-			list.Add (5);
-			list.Add (0);
-			list.Add (7);
-
-			BinaryFormatter bf = new BinaryFormatter ();
-			MemoryStream ms = new MemoryStream ();
-			bf.Serialize (ms, list);
-
-			byte [] buffer = new byte [ms.Length];
-			ms.Position = 0;
-			ms.Read (buffer, 0, buffer.Length);
-
-			Assert.AreEqual (_serializedList, buffer);
-		}
-
-#endif
 
 		[Test]
 		public void DeserializeTest ()
@@ -1411,7 +1389,7 @@ namespace MonoTests.System.Collections.Generic {
 				x.CopyTo (Array.CreateInstance (typeof (int), new int [] { 10 }, new int[] { 1 }), 0);
 				Assert.Fail ("#7");
 			} catch (Exception e) {
-				Assert.IsTrue (e is ArgumentException, "#8");
+				Assert.IsTrue (e is ArgumentOutOfRangeException, "#8");
 			}
 
 			l.Add (10); l.Add (20);

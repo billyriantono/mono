@@ -204,9 +204,7 @@ namespace Mono.Unix.Native {
 	#region Classes
 
 	public sealed class FilePosition : MarshalByRefObject, IDisposable 
-#if NET_2_0
 		, IEquatable <FilePosition>
-#endif
 	{
 
 		private static readonly int FilePositionDumpSize = 
@@ -305,26 +303,11 @@ namespace Mono.Unix.Native {
 	// Right now using this attribute gives an assert because it
 	// isn't implemented.
 	//
-#if NET_2_0 && UNMANAGED_FN_PTR_SUPPORT_FIXED
+#if UNMANAGED_FN_PTR_SUPPORT_FIXED
 	[UnmanagedFunctionPointer (CallingConvention.Cdecl)]
 #endif
 	public delegate void SignalHandler (int signal);
 
-#if !NET_2_0
-	internal sealed class SignalWrapper {
-		private IntPtr handler;
-
-		internal SignalWrapper (IntPtr handler)
-		{
-			this.handler = handler;
-		}
-
-		public void InvokeSignalHandler (int signum)
-		{
-			Stdlib.InvokeSignalHandler (signum, handler);
-		}
-	}
-#endif
 
 	internal class XPrintfFunctions
 	{
@@ -397,6 +380,42 @@ namespace Mono.Unix.Native {
 	{
 		internal const string LIBC = "msvcrt";
 		internal const string MPH  = "MonoPosixHelper";
+
+		// It is possible for Mono.Posix and MonoPosixHelper to get out of sync,
+		// for example if NuGet does something weird. To mitigate this, anyone
+		// editing Mono.Posix needs to observe two rules:
+		//   1. When introducing C-interface changes to MonoPosixHelper, update
+		//      the version strings in VersionCheck below and also
+		//      Mono_Unix_VersionString in the C sources.
+		//   2. Any class which performs a DllImport on Stdlib.MPH needs to call
+		//      Stdlib.VersionCheck in its static constructor.
+
+		[DllImport (Stdlib.MPH, CallingConvention=CallingConvention.Cdecl,
+				EntryPoint="Mono_Unix_VersionString")]
+		private static extern IntPtr VersionStringPtr ();
+		private static bool versionCheckPerformed = false;
+		internal static void VersionCheck ()
+		{
+			if (versionCheckPerformed)
+				return;
+
+			// This string is arbitrary; it matters only that it is unique.
+			string assemblyVersion = "MonoProject-2015-12-1";
+			string nativeVersion = Marshal.PtrToStringAnsi (VersionStringPtr ());
+			if (assemblyVersion != nativeVersion)
+			{
+				throw new Exception ("Mono.Posix assembly loaded with a different version (\""
+					+ assemblyVersion + "\") than MonoPosixHelper (\"" + nativeVersion
+				    + "\"). You may need to reinstall Mono.Posix.");
+			}
+
+			versionCheckPerformed = true;
+		}
+
+		static Stdlib ()
+		{
+			VersionCheck ();
+		}
 
 		internal Stdlib () {}
 
@@ -511,11 +530,7 @@ namespace Mono.Unix.Native {
 				return SIG_ERR;
 			if (handler == _SIG_IGN)
 				return SIG_IGN;
-#if NET_2_0
 			return (SignalHandler) Marshal.GetDelegateForFunctionPointer (handler, typeof(SignalHandler));
-#else
-			return new SignalHandler (new SignalWrapper (handler).InvokeSignalHandler);
-#endif
 		}
 
 		public static int SetSignalAction (Signum signal, SignalAction action)

@@ -39,16 +39,15 @@ using System.Runtime.InteropServices;
 using System.Security;
 using System.Security.Permissions;
 using System.Security.Principal;
+using System.Threading;
 using System.Web.Configuration;
 using System.Web.Management;
 using System.Web.UI;
 using System.Web.Util;
 using System.Globalization;
 
-#if NET_4_0
 using System.Security.Authentication.ExtendedProtection;
 using System.Web.Routing;
-#endif
 
 namespace System.Web
 {	
@@ -112,7 +111,6 @@ namespace System.Web
 		bool checked_cookies, checked_query_string, checked_form;
 		static readonly UrlMappingCollection urlMappings;
 		readonly static char [] queryTrimChars = {'?'};
-#if NET_4_0
 		bool lazyFormValidation;
 		bool lazyQueryStringValidation;
 		bool inputValidationEnabled;
@@ -154,7 +152,6 @@ namespace System.Web
 
 			return chars;
 		}
-#endif
 
 		static HttpRequest ()
 		{
@@ -166,7 +163,6 @@ namespace System.Web
 						urlMappings = null;
 				}
 
-#if NET_4_0
 				Version validationMode = HttpRuntime.Section.RequestValidationMode;
 
 				if (validationMode >= new Version (4, 0)) {
@@ -175,7 +171,6 @@ namespace System.Web
 					if (!String.IsNullOrEmpty (invalidChars))
 						RequestPathInvalidCharacters = CharsFromList (invalidChars);
 				}
-#endif
 			} catch {
 				// unlikely to happen
 			}
@@ -318,12 +313,7 @@ namespace System.Web
 		public HttpBrowserCapabilities Browser {
 			get {
 				if (browser_capabilities == null)
-#if NET_4_0
 					browser_capabilities = HttpCapabilitiesBase.BrowserCapabilitiesProvider.GetBrowserCapabilities (this);
-#else
-					browser_capabilities = (HttpBrowserCapabilities)
-						HttpCapabilitiesBase.GetConfigCapabilities (null, this);
-#endif
 
 				return browser_capabilities;
 			}
@@ -465,14 +455,8 @@ namespace System.Web
 					cookies = CookiesNoValidation;
 				}
 
-#if TARGET_J2EE
-				// For J2EE portal support we emulate cookies using the session.
-				GetSessionCookiesForPortal (cookies);
-#endif
 				bool needValidation = validate_cookies;
-#if NET_4_0
 				needValidation |= validateRequestNewMode;
-#endif
 				if (needValidation && !checked_cookies) {
 					// Setting this before calling the validator prevents
 					// possible endless recursion
@@ -493,11 +477,9 @@ namespace System.Web
 				return FilePath;
 			}
 		}
-#if NET_4_0
 		public string CurrentExecutionFilePathExtension {
 			get { return global::System.IO.Path.GetExtension (CurrentExecutionFilePath); }
 		}
-#endif
 		public string AppRelativeCurrentExecutionFilePath {
 			get {
 				return VirtualPathUtility.ToAppRelative (CurrentExecutionFilePath);
@@ -663,11 +645,7 @@ namespace System.Web
 		//
 		// Loads the form data from on a application/x-www-form-urlencoded post
 		// 
-#if TARGET_J2EE
-		void RawLoadWwwForm ()
-#else
 		void LoadWwwForm ()
-#endif
 		{
 			using (Stream input = GetSubStream (InputStream)) {
 				using (StreamReader s = new StreamReader (input, ContentEncoding)) {
@@ -732,7 +710,6 @@ namespace System.Web
 		public NameValueCollection Form {
 			get {
 				NameValueCollection form = FormUnvalidated;
-#if NET_4_0
 				if (validateRequestNewMode && !checked_form) {
 					if (!lazyFormValidation) {
 						// Setting this before calling the validator prevents
@@ -741,7 +718,6 @@ namespace System.Web
 						ValidateNameValueCollection ("Form", form, RequestValidationSource.Form);
 					}
 				} else
-#endif
 					if (validate_form && !checked_form){
 						checked_form = true;
 						ValidateNameValueCollection ("Form", form);
@@ -765,7 +741,6 @@ namespace System.Web
 			get {
 				if (headers == null) {
 					headers = HeadersNoValidation;
-#if NET_4_0
 					if (validateRequestNewMode) {
 						RequestValidator validator = RequestValidator.Current;
 						int validationFailureIndex;
@@ -777,7 +752,6 @@ namespace System.Web
 								ThrowValidationException ("Headers", hkey, value);
 						}
 					}
-#endif
 				}
 				
 				return headers;
@@ -990,7 +964,6 @@ namespace System.Web
 				} catch {}
 			}
 		}
-#if NET_4_0
 		public RequestContext RequestContext {
 			get {
 				if (requestContext == null)
@@ -1008,6 +981,11 @@ namespace System.Web
 			}
 		}
 
+		public Stream GetBufferedInputStream ()
+		{
+			return input_stream;
+		}
+
 		public Stream GetBufferlessInputStream ()
 		{
 			if (bufferlessInputStream == null) {
@@ -1019,6 +997,11 @@ namespace System.Web
 			}
 
 			return bufferlessInputStream;
+		}
+
+		public Stream GetBufferlessInputStream (bool disableMaxRequestLength)
+		{
+			return GetBufferlessInputStream ();
 		}
 
 		//
@@ -1160,7 +1143,6 @@ namespace System.Web
 			// TODO: explicitly support the async methods if there is a convenient way of doing it
 			//
 		}
-#endif
 		public Stream InputStream {
 			get {
 				if (input_stream == null)
@@ -1235,7 +1217,6 @@ namespace System.Web
 			get {
 				if (unescaped_path == null) {
 					unescaped_path = PathNoValidation;
-#if NET_4_0
 					if (validateRequestNewMode) {
 						RequestValidator validator = RequestValidator.Current;
 						int validationFailureIndex;
@@ -1243,7 +1224,6 @@ namespace System.Web
 						if (!validator.IsValidRequestString (HttpContext.Current, unescaped_path, RequestValidationSource.Path, null, out validationFailureIndex))
 							ThrowValidationException ("Path", "Path", unescaped_path);
 					}
-#endif
 				}
 				
 				return unescaped_path;
@@ -1267,7 +1247,6 @@ namespace System.Web
 			get {
 				if (path_info == null) {
 					path_info = PathInfoNoValidation;
-#if NET_4_0
 					if (validateRequestNewMode) {
 						RequestValidator validator = RequestValidator.Current;
 						int validationFailureIndex;
@@ -1275,7 +1254,6 @@ namespace System.Web
 						if (!validator.IsValidRequestString (HttpContext.Current, path_info, RequestValidationSource.PathInfo, null, out validationFailureIndex))
 							ThrowValidationException ("PathInfo", "PathInfo", path_info);
 					}
-#endif
 				}
 
 				return path_info;
@@ -1349,7 +1327,6 @@ namespace System.Web
 		public NameValueCollection QueryString {
 			get {
 				NameValueCollection query_string_nvc = QueryStringUnvalidated;
-#if NET_4_0
 				if (validateRequestNewMode && !checked_query_string) {
 					if (!lazyQueryStringValidation) {
 						// Setting this before calling the validator prevents
@@ -1358,7 +1335,6 @@ namespace System.Web
 						ValidateNameValueCollection ("QueryString", query_string_nvc, RequestValidationSource.QueryString);
 					}
 				} else
-#endif
 					if (validate_query_string && !checked_query_string) {
 						// Setting this before calling the validator prevents
 						// possible endless recursion
@@ -1390,7 +1366,6 @@ namespace System.Web
 			get {
 				if (raw_url == null) {
 					raw_url = RawUrlUnvalidated;
-#if NET_4_0
 					if (validateRequestNewMode) {
 						RequestValidator validator = RequestValidator.Current;
 						int validationFailureIndex;
@@ -1398,7 +1373,6 @@ namespace System.Web
 						if (!validator.IsValidRequestString (HttpContext.Current, raw_url, RequestValidationSource.RawUrl, null, out validationFailureIndex))
 							ThrowValidationException ("RawUrl", "RawUrl", raw_url);
 					}
-#endif
 				}
 				
 				return raw_url;
@@ -1436,6 +1410,12 @@ namespace System.Web
 			}
 		}
 
+		public CancellationToken TimedOutToken {
+			get {
+				throw new NotImplementedException ();
+			}
+		}
+
 		public int TotalBytes {
 			get {
 				Stream ins = InputStream;
@@ -1443,7 +1423,6 @@ namespace System.Web
 			}
 		}
 
-#if NET_4_5
 		public UnvalidatedRequestValues Unvalidated { 
 			get {
 				var vals = new UnvalidatedRequestValues ();
@@ -1461,7 +1440,6 @@ namespace System.Web
 				return vals;
 			}
 		}
-#endif
 
 		public Uri Url {
 			get {
@@ -1548,6 +1526,38 @@ namespace System.Web
 
 		public int [] MapImageCoordinates (string imageFieldName)
 		{
+			string[] parameters = GetImageCoordinatesParameters (imageFieldName);
+			if (parameters == null)
+				return null;
+			int [] result = new int [2];
+			try {
+				result [0] = Int32.Parse (parameters [0]);
+				result [1] = Int32.Parse (parameters [1]);
+			} catch {
+				return null;
+			}
+
+			return result;
+		}
+
+		public double [] MapRawImageCoordinates (string imageFieldName)
+		{
+			string[] parameters = GetImageCoordinatesParameters (imageFieldName);
+			if (parameters == null)
+				return null;
+			double [] result = new double [2];
+			try {
+				result [0] = Double.Parse (parameters [0]);
+				result [1] = Double.Parse (parameters [1]);
+			} catch {
+				return null;
+			}
+
+			return result;
+		}
+
+		string [] GetImageCoordinatesParameters (string imageFieldName)
+		{
 			string method = HttpMethod;
 			NameValueCollection coll = null;
 			if (method == "HEAD" || method == "GET")
@@ -1565,14 +1575,7 @@ namespace System.Web
 			string y = coll [imageFieldName + ".y"];
 			if (y == null || y == "")
 				return null;
-
-			int [] result = new int [2];
-			try {
-				result [0] = Int32.Parse (x);
-				result [1] = Int32.Parse (y);
-			} catch {
-				return null;
-			}
+			string[] result = new string [] { x, y };
 
 			return result;
 		}
@@ -1679,11 +1682,8 @@ namespace System.Web
 			validate_cookies = true;
 			validate_query_string = true;
 			validate_form = true;
-#if NET_4_0
 			inputValidationEnabled = true;
-#endif
 		}
-#if NET_4_0
 		internal void Validate ()
 		{
 			var cfg = HttpRuntime.Section;
@@ -1711,7 +1711,6 @@ namespace System.Web
 			if (validateRequestNewMode)
 				ValidateInput ();
 		}
-#endif
 #region internal routines
 		internal string ClientTarget {
 			get {
@@ -1774,7 +1773,6 @@ namespace System.Web
 			string path = UrlComponents.Path;
 			UrlComponents.Path = path + PathInfo;
 		}
-#if NET_4_0
 		internal void SetFormCollection (WebROCollection coll, bool lazyValidation)
 		{
 			if (coll == null)
@@ -1790,7 +1788,6 @@ namespace System.Web
 			query_string_nvc = coll;
 			lazyQueryStringValidation = lazyValidation;
 		}
-#endif
 		// Headers is ReadOnly, so we need this hack for cookie-less sessions.
 		internal void SetHeader (string name, string value)
 		{
@@ -1855,7 +1852,6 @@ namespace System.Web
 					ThrowValidationException (name, key, val);
 			}
 		}
-#if NET_4_0
 		static void ValidateNameValueCollection (string name, NameValueCollection coll, RequestValidationSource source)
 		{
 			if (coll == null)
@@ -1883,7 +1879,6 @@ namespace System.Web
 		{
 			throw new PlatformNotSupportedException ("This method is not supported.");
 		}
-#endif
 		static void ValidateCookieCollection (HttpCookieCollection cookies)
 		{
 			if (cookies == null)
@@ -1891,11 +1886,9 @@ namespace System.Web
 		
 			int size = cookies.Count;
 			HttpCookie cookie;
-#if NET_4_0
 			RequestValidator validator = RequestValidator.Current;
 			int validationFailureIndex;
 			HttpContext context = HttpContext.Current;
-#endif
 			bool invalid;
 			
 			for (int i = 0 ; i < size ; i++) {
@@ -1907,11 +1900,9 @@ namespace System.Web
 				string name = cookie.Name;
 
 				if (!String.IsNullOrEmpty (value)) {
-#if NET_4_0
 					if (validateRequestNewMode)
 						invalid = !validator.IsValidRequestString (context, value, RequestValidationSource.Cookies, name, out validationFailureIndex);
 					else
-#endif
 						invalid = IsInvalidString (value);
 
 					if (invalid)
@@ -1931,7 +1922,6 @@ namespace System.Web
 		
 			throw new HttpRequestValidationException (msg);
 		}
-#if NET_4_0
 		internal static void ValidateString (string key, string value, RequestValidationSource source)
 		{
 			if (String.IsNullOrEmpty (value))
@@ -1942,7 +1932,6 @@ namespace System.Web
 			if (IsInvalidString (value, out ignore))
 				ThrowValidationException (source.ToString (), key, value);
 		}
-#endif
 		internal static bool IsInvalidString (string val)
 		{
 #pragma warning disable 219

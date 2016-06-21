@@ -113,6 +113,21 @@ namespace System.IO
 			}
 		}
 
+		internal static String InternalCopy (String sourceFileName, String destFileName, bool overwrite, bool checkHost)
+		{
+			String fullSourceFileName = Path.GetFullPathInternal(sourceFileName);
+			String fullDestFileName = Path.GetFullPathInternal(destFileName);
+
+			MonoIOError error;
+
+			if (!MonoIO.CopyFile (fullSourceFileName, fullDestFileName, overwrite, out error)) {
+				string p = Locale.GetText ("{0}\" or \"{1}", sourceFileName, destFileName);
+				throw MonoIO.GetException (p, error);
+			}
+
+			return fullDestFileName;
+		}
+
 		public static FileStream Create (string path)
 		{
 			return Create (path, 8192);
@@ -406,6 +421,12 @@ namespace System.IO
 							       "Destination and backup arguments are the same file."));
 			}
 
+			var attrs = GetAttributes (fullDest);
+
+			// TODO: Should be done in wapi, win32 api handles this already
+			if ((attrs & FileAttributes.ReadOnly) != 0)
+				throw MonoIO.GetException (MonoIOError.ERROR_ACCESS_DENIED);
+
 			if (!MonoIO.ReplaceFile (fullSource, fullDest, fullBackup, 
 						 ignoreMetadataErrors, out error)) {
 				throw MonoIO.GetException (error);
@@ -575,7 +596,7 @@ namespace System.IO
 
 		public static void WriteAllText (string path, string contents)
 		{
-			WriteAllText (path, contents, Encoding.UTF8Unmarked);
+			WriteAllText (path, contents, EncodingHelper.UTF8Unmarked);
 		}
 
 		public static void WriteAllText (string path, string contents, Encoding encoding)
@@ -616,7 +637,6 @@ namespace System.IO
 			throw new NotSupportedException (Locale.GetText ("File encryption isn't supported on any file system."));
 		}
 
-#if NET_4_0
 		public static IEnumerable<string> ReadLines (string path)
 		{
 			return ReadLines (File.OpenText (path));
@@ -689,6 +709,22 @@ namespace System.IO
 					w.WriteLine (line);
 			}
 		}
-#endif
+
+		internal static int FillAttributeInfo (String path, ref MonoIOStat data, bool tryagain, bool returnErrorOnNotFound)
+		{
+			if (tryagain)
+				throw new NotImplementedException ();
+
+			MonoIOError error;
+			MonoIO.GetFileStat (path, out data, out error);
+
+			if (!returnErrorOnNotFound && (error == MonoIOError.ERROR_FILE_NOT_FOUND || error == MonoIOError.ERROR_PATH_NOT_FOUND || error == MonoIOError.ERROR_NOT_READY)) {
+				data = default (MonoIOStat);
+				data.fileAttributes = (FileAttributes) (-1);
+				return 0;
+			}
+
+			return (int) error;
+		}
 	}
 }

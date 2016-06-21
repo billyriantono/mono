@@ -42,15 +42,21 @@ namespace System.Web.Security
 	public sealed class FormsAuthenticationModule : IHttpModule
 	{
 		static readonly object authenticateEvent = new object ();
-		
-#if NET_2_0
+
+		// Config values
+		private static bool      _fAuthChecked;
+		private static bool      _fAuthRequired;
+
 		AuthenticationSection _config = null;
-#else
-		AuthConfig _config = null;
-#endif
 		bool isConfigInitialized = false;
 		EventHandlerList events = new EventHandlerList ();
-		
+	
+		internal static bool FormsAuthRequired {
+			get {
+				return _fAuthRequired;
+			}
+		}
+
 		public event FormsAuthenticationEventHandler Authenticate {
 			add { events.AddHandler (authenticateEvent, value); }
 			remove { events.RemoveHandler (authenticateEvent, value); }
@@ -60,11 +66,15 @@ namespace System.Web.Security
 		{
 			if(isConfigInitialized)
 				return;
-#if NET_2_0
 			_config = (AuthenticationSection) WebConfigurationManager.GetSection ("system.web/authentication");
-#else
-			_config = (AuthConfig) context.GetConfig ("system.web/authentication");
-#endif
+
+			// authentication is an app level setting only
+			// so we can read app config early on in an attempt to try and
+			// skip wiring up event delegates
+			if (!_fAuthChecked) {
+				_fAuthRequired = (_config.Mode == AuthenticationMode.Forms);
+				_fAuthChecked = true;
+			}
 			isConfigInitialized = true;
 		}
 
@@ -79,6 +89,7 @@ namespace System.Web.Security
 
 		public void Init (HttpApplication app)
 		{
+
 			app.AuthenticateRequest += new EventHandler (OnAuthenticateRequest);
 			app.EndRequest += new EventHandler (OnEndRequest);
 		}
@@ -98,17 +109,10 @@ namespace System.Web.Security
 				return;
 			}
 
-#if NET_2_0
 			cookieName = _config.Forms.Name;
 			cookiePath = _config.Forms.Path;
 			loginPage = _config.Forms.LoginUrl;
 			slidingExpiration = _config.Forms.SlidingExpiration;
-#else
-			cookieName = _config.CookieName;
-			cookiePath = _config.CookiePath;
-			loginPage = _config.LoginUrl;
-			slidingExpiration = _config.SlidingExpiration;
-#endif
 
 			if (!VirtualPathUtility.IsRooted (loginPage))
 				loginPage = "~/" + loginPage;
@@ -122,12 +126,10 @@ namespace System.Web.Security
 
 			context.SkipAuthorization = String.Compare (reqPath, loginPath, RuntimeHelpers.CaseInsensitive, Helpers.InvariantCulture) == 0;
 			
-#if NET_2_0
 			//TODO: need to check that the handler is System.Web.Handlers.AssemblyResourceLoader type
 			string filePath = context.Request.FilePath;
 			if (filePath.Length > 15 && String.CompareOrdinal ("WebResource.axd", 0, filePath, filePath.Length - 15, 15) == 0)
 				context.SkipAuthorization = true;
-#endif
 
 			FormsAuthenticationEventArgs formArgs = new FormsAuthenticationEventArgs (context);
 			FormsAuthenticationEventHandler eh = events [authenticateEvent] as FormsAuthenticationEventHandler;
@@ -180,18 +182,12 @@ namespace System.Web.Security
 			if (context.Response.StatusCode != 401 || context.Request.QueryString ["ReturnUrl"] != null)
 				return;
 
-#if NET_4_5
 			if (context.Response.StatusCode == 401 && context.Response.SuppressFormsAuthenticationRedirect)
 				return;
-#endif
 
 			string loginPage;
 			InitConfig (context);
-#if NET_2_0
 			loginPage = _config.Forms.LoginUrl;
-#else
-			loginPage = _config.LoginUrl;
-#endif
 			if (_config == null || _config.Mode != AuthenticationMode.Forms)
 				return;
 

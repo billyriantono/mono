@@ -30,30 +30,19 @@
 
 #if SECURITY_DEP
 
-#if MONOTOUCH || MONODROID
-using Mono.Security.Protocol.Tls;
-#else
-extern alias MonoSecurity;
-using MonoSecurity::Mono.Security.Protocol.Tls;
-#endif
-
 using System.Collections;
 using System.Collections.Specialized;
 using System.Globalization;
 using System.IO;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-#if NET_4_0
 using System.Security.Authentication.ExtendedProtection;
-#endif
-#if NET_4_5
 using System.Threading.Tasks;
-#endif
+using System.Net;
 
 namespace System.Net {
 	public sealed class HttpListenerRequest
 	{
-#if NET_4_0
 		class Context : TransportContext
 		{
 			public override ChannelBinding GetChannelBinding (ChannelBindingKind kind)
@@ -61,7 +50,6 @@ namespace System.Net {
 				throw new NotImplementedException ();
 			}
 		}
-#endif
 
 		string [] accept_types;
 		Encoding content_encoding;
@@ -148,14 +136,62 @@ namespace System.Net {
 			foreach (string kv in components) {
 				int pos = kv.IndexOf ('=');
 				if (pos == -1) {
-					query_string.Add (null, HttpUtility.UrlDecode (kv));
+					query_string.Add (null, WebUtility.UrlDecode (kv));
 				} else {
-					string key = HttpUtility.UrlDecode (kv.Substring (0, pos));
-					string val = HttpUtility.UrlDecode (kv.Substring (pos + 1));
+					string key = WebUtility.UrlDecode (kv.Substring (0, pos));
+					string val = WebUtility.UrlDecode (kv.Substring (pos + 1));
 					
 					query_string.Add (key, val);
 				}
 			}
+		}
+
+		static bool MaybeUri (string s)
+		{
+			int p = s.IndexOf (':');
+			if (p == -1)
+				return false;
+
+			if (p >= 10)
+				return false;
+
+			return IsPredefinedScheme (s.Substring (0, p));
+		}
+
+		//
+		// Using a simple block of if's is twice as slow as the compiler generated
+		// switch statement.   But using this tuned code is faster than the
+		// compiler generated code, with a million loops on x86-64:
+		//
+		// With "http": .10 vs .51 (first check)
+		// with "https": .16 vs .51 (second check)
+		// with "foo": .22 vs .31 (never found)
+		// with "mailto": .12 vs .51  (last check)
+		//
+		//
+		static bool IsPredefinedScheme (string scheme)
+		{
+			if (scheme == null || scheme.Length < 3)
+				return false;
+			
+			char c = scheme [0];
+			if (c == 'h')
+				return (scheme == "http" || scheme == "https");
+			if (c == 'f')
+				return (scheme == "file" || scheme == "ftp");
+				
+			if (c == 'n'){
+				c = scheme [1];
+				if (c == 'e')
+					return (scheme == "news" || scheme == "net.pipe" || scheme == "net.tcp");
+				if (scheme == "nntp")
+					return true;
+				return false;
+			}
+			if ((c == 'g' && scheme == "gopher") || (c == 'm' && scheme == "mailto"))
+				return true;
+
+			return false;
 		}
 
 		internal void FinishInitialization ()
@@ -168,7 +204,7 @@ namespace System.Net {
 
 			string path;
 			Uri raw_uri = null;
-			if (Uri.MaybeUri (raw_url) && Uri.TryCreate (raw_url, UriKind.Absolute, out raw_uri))
+			if (MaybeUri (raw_url.ToLowerInvariant ()) && Uri.TryCreate (raw_url, UriKind.Absolute, out raw_uri))
 				path = raw_uri.PathAndQuery;
 			else
 				path = raw_url;
@@ -188,11 +224,16 @@ namespace System.Net {
 								host, LocalEndPoint.Port);
 
 			if (!Uri.TryCreate (base_uri + path, UriKind.Absolute, out url)){
-				context.ErrorMessage = "Invalid url: " + base_uri + path;
+				context.ErrorMessage = WebUtility.HtmlEncode ("Invalid url: " + base_uri + path);
 				return;
 			}
 
 			CreateQueryString (url.Query);
+
+			// Use reference source HttpListenerRequestUriBuilder to process url.
+			// Fixes #29927
+			url = HttpListenerRequestUriBuilder.GetRequestUri (raw_url, url.Scheme,
+								url.Authority, url.LocalPath, url.Query);
 
 			if (version >= HttpVersion.Version11) {
 				string t_encoding = Headers ["Transfer-Encoding"];
@@ -410,7 +451,7 @@ namespace System.Net {
 		}
 
 		public bool IsLocal {
-			get { return IPAddress.IsLoopback (RemoteEndPoint.Address); }
+			get { return LocalEndPoint.Address.Equals (RemoteEndPoint.Address); }
 		}
 
 		public bool IsSecureConnection {
@@ -512,7 +553,6 @@ namespace System.Net {
 			return context.Connection.ClientCertificate;
 		}
 
-#if NET_4_0
 		[MonoTODO]
 		public string ServiceName {
 			get {
@@ -525,9 +565,7 @@ namespace System.Net {
 				return new Context ();
 			}
 		}
-#endif
 		
-#if NET_4_5
 		[MonoTODO]
 		public bool IsWebSocketRequest {
 			get {
@@ -539,7 +577,6 @@ namespace System.Net {
 		{
 			return Task<X509Certificate2>.Factory.FromAsync (BeginGetClientCertificate, EndGetClientCertificate, null);
 		}
-#endif
 	}
 }
 #endif

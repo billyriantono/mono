@@ -8,6 +8,8 @@
 // (c) 2007 Novell, Inc. (http://www.novell.com)
 // 
 
+#if MONO_FEATURE_PROCESS_START
+
 using System;
 using System.Diagnostics;
 using System.Text;
@@ -33,7 +35,6 @@ namespace MonoTests.System.Diagnostics
 			Assert.AreEqual (info.WorkingDirectory, String.Empty, "#6");
 		}
 
-#if NET_2_0
 		[Test]
 		public void StandardErrorOutputEncoding ()
 		{
@@ -61,6 +62,7 @@ namespace MonoTests.System.Diagnostics
 			info.StandardOutputEncoding = Encoding.UTF8;
 			Process.Start (info);
 		}
-#endif
 	}
 }
+
+#endif // MONO_FEATURE_PROCESS_START

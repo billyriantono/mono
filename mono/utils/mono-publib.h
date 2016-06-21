@@ -44,7 +44,11 @@ typedef unsigned __int64	uint64_t;
 
 #include <stdint.h>
 
+#ifdef __GNUC__
+#define MONO_API_EXPORT __attribute__ ((visibility ("default")))
+#else
 #define MONO_API_EXPORT
+#endif
 #define MONO_API_IMPORT
 
 #endif /* end of compiler-specific stuff */
@@ -68,6 +72,34 @@ typedef void	(*MonoHFunc)	(void* key, void* value, void* user_data);
 MONO_API void mono_free (void *);
 
 #define MONO_CONST_RETURN const
+
+/*
+ * When embedding, you have to define MONO_ZERO_LEN_ARRAY before including any
+ * other Mono header file if you use a different compiler from the one used to
+ * build Mono.
+ */
+#ifndef MONO_ZERO_LEN_ARRAY
+#ifdef __GNUC__
+#define MONO_ZERO_LEN_ARRAY 0
+#else
+#define MONO_ZERO_LEN_ARRAY 1
+#endif
+#endif
+
+#if defined (MONO_INSIDE_RUNTIME)
+
+#if defined (__clang__)
+#define MONO_RT_EXTERNAL_ONLY __attribute__ ((unavailable("The mono runtime must not call this function")))
+#elif defined (__GNUC__)
+#define MONO_RT_EXTERNAL_ONLY __attribute__ ((error("The mono runtime must not call this function")))
+#else
+#define MONO_RT_EXTERNAL_ONLY
+#endif /* __clang__ */
+
+#else
+#define MONO_RT_EXTERNAL_ONLY
+#endif /* MONO_INSIDE_RUNTIME */
+
 
 MONO_END_DECLS
 

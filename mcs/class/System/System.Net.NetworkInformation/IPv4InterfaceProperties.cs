@@ -31,20 +31,6 @@ using System.IO;
 using System.Runtime.InteropServices;
 
 namespace System.Net.NetworkInformation {
-	public abstract class IPv4InterfaceProperties {
-		protected IPv4InterfaceProperties ()
-		{
-		}
-
-		public abstract int Index { get; }
-		public abstract bool IsAutomaticPrivateAddressingActive { get; }
-		public abstract bool IsAutomaticPrivateAddressingEnabled { get; }
-		public abstract bool IsDhcpEnabled { get; }
-		public abstract bool IsForwardingEnabled { get; }
-		public abstract int Mtu { get; }
-		public abstract bool UsesWins { get; }
-	}
-
 	abstract class UnixIPv4InterfaceProperties : IPv4InterfaceProperties
 	{
 		protected UnixNetworkInterface iface;
@@ -55,7 +41,7 @@ namespace System.Net.NetworkInformation {
 		}
 		
 		public override int Index {
-			get { return UnixNetworkInterface.IfNameToIndex (iface.Name); }
+			get { return iface.NameIndex; }
 		}
 
 		// TODO: how to discover that?
@@ -90,7 +76,7 @@ namespace System.Net.NetworkInformation {
 				string iface_path = "/proc/sys/net/ipv4/conf/" + iface.Name + "/forwarding";
 
 				if (File.Exists (iface_path)) {
-					string val = NetworkInterface.ReadLine (iface_path);
+					string val = LinuxNetworkInterface.ReadLine (iface_path);
 
 					return val != "0";
 				}
@@ -105,7 +91,7 @@ namespace System.Net.NetworkInformation {
 				int ret = 0;
 
 				if (File.Exists (iface_path)) {
-					string val = NetworkInterface.ReadLine (iface_path);
+					string val = LinuxNetworkInterface.ReadLine (iface_path);
 					
 					try {
 						ret = Int32.Parse (val);
@@ -137,6 +123,7 @@ namespace System.Net.NetworkInformation {
 		}
 	}
 	
+#if !MOBILE
 	sealed class Win32IPv4InterfaceProperties : IPv4InterfaceProperties
 	{
 		[DllImport ("iphlpapi.dll")]
@@ -198,5 +185,6 @@ namespace System.Net.NetworkInformation {
 		public IntPtr CurrentDnsServer; // to Win32_IP_ADDR_STRING
 		public Win32_IP_ADDR_STRING DnsServerList;
 	}
+#endif
 }
 

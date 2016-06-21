@@ -92,7 +92,7 @@ namespace Mono.CSharp
 		}
 
 		//
-		// Any unattached attributes during parsing get added here. User
+		// Any unattached attributes during parsing get added here. Used
 		// by FULL_AST mode
 		//
 		public Attributes UnattachedAttributes {
@@ -359,12 +359,8 @@ namespace Mono.CSharp
 			return MemberName.GetSignatureForError ();
 		}
 
-		public string GetSignatureForMetadata ()
+		public virtual string GetSignatureForMetadata ()
 		{
-			if (Parent is TypeDefinition) {
-				return Parent.GetSignatureForMetadata () + "+" + TypeNameParser.Escape (MemberName.Basename);
-			}
-
 			var sb = new StringBuilder ();
 			CreateMetadataName (sb);
 			return sb.ToString ();
@@ -534,7 +530,6 @@ namespace Mono.CSharp
 
 		bool has_normal_indexers;
 		string indexer_name;
-		protected bool requires_delayed_unmanagedtype_check;
 		bool error;
 		bool members_defined;
 		bool members_defined_ok;
@@ -945,7 +940,8 @@ namespace Mono.CSharp
 
 		TypeParameterSpec[] ITypeDefinition.TypeParameters {
 			get {
-				return PartialContainer.CurrentTypeParameters.Types;
+				var ctp = PartialContainer.CurrentTypeParameters;
+				return ctp == null ? TypeParameterSpec.EmptyTypes : ctp.Types;
 			}
 		}
 
@@ -1124,6 +1120,15 @@ namespace Mono.CSharp
 
 				ns = ns.Parent;
 			}
+		}
+
+		public override string GetSignatureForMetadata ()
+		{
+			if (Parent is TypeDefinition) {
+				return Parent.GetSignatureForMetadata () + "+" + TypeNameParser.Escape (FilterNestedName (MemberName.Basename));
+			}
+
+			return base.GetSignatureForMetadata ();
 		}
 
 		public virtual void SetBaseTypes (List<FullNamedExpression> baseTypes)
@@ -1724,28 +1729,9 @@ namespace Mono.CSharp
 				return;
 
 			foreach (var member in members) {
-				var pbm = member as PropertyBasedMember;
+				var pbm = member as MemberBase;
 				if (pbm != null)
 					pbm.PrepareEmit ();
-
-				var pm = member as IParametersMember;
-				if (pm != null) {
-					var mc = member as MethodOrOperator;
-					if (mc != null) {
-						mc.PrepareEmit ();
-					}
-
-					var p = pm.Parameters;
-					if (p.IsEmpty)
-						continue;
-
-					((ParametersCompiled) p).ResolveDefaultValues (member);
-					continue;
-				}
-
-				var c = member as Const;
-				if (c != null)
-					c.DefineValue ();
 			}
 
 			base.PrepareEmit ();
@@ -1804,6 +1790,10 @@ namespace Mono.CSharp
 
 			this.spec = spec;
 			current_type = null;
+			if (class_partial_parts != null) {
+				foreach (var part in class_partial_parts)
+					part.spec = spec;
+			}
 		}
 
 		public override void RemoveContainer (TypeContainer cont)
@@ -1911,9 +1901,7 @@ namespace Mono.CSharp
 					if (compiled_iface != null)
 						compiled_iface.Define ();
 
-					ObsoleteAttribute oa = iface_type.GetAttributeObsolete ();
-					if (oa != null && !IsObsolete)
-						AttributeTester.Report_ObsoleteMessage (oa, iface_type.GetSignatureForError (), Location, Report);
+					iface_type.CheckObsoleteness (this, Location);
 
 					if (iface_type.Arity > 0) {
 						// TODO: passing `this' is wrong, should be base type iface instead
@@ -1954,9 +1942,7 @@ namespace Mono.CSharp
 				// Run checks skipped during DefineType (e.g FullNamedExpression::ResolveAsType)
 				//
 				if (base_type_expr != null) {
-					ObsoleteAttribute obsolete_attr = base_type.GetAttributeObsolete ();
-					if (obsolete_attr != null && !IsObsolete)
-						AttributeTester.Report_ObsoleteMessage (obsolete_attr, base_type.GetSignatureForError (), base_type_expr.Location, Report);
+					base_type.CheckObsoleteness (this, base_type_expr.Location);
 
 					if (IsGenericOrParentIsGeneric && base_type.IsAttribute) {
 						Report.Error (698, base_type_expr.Location,
@@ -2011,15 +1997,6 @@ namespace Mono.CSharp
 
 			if (HasOperators) {
 				CheckPairedOperators ();
-			}
-
-			if (requires_delayed_unmanagedtype_check) {
-				requires_delayed_unmanagedtype_check = false;
-				foreach (var member in members) {
-					var f = member as Field;
-					if (f != null && f.MemberType != null && f.MemberType.IsPointer)
-						TypeManager.VerifyUnmanaged (Module, f.MemberType, f.Location);
-				}
 			}
 
 			ComputeIndexerName();
@@ -2406,7 +2383,7 @@ namespace Mono.CSharp
 			var ifaces = PartialContainer.Interfaces;
 			if (ifaces != null) {
 				foreach (TypeSpec t in ifaces){
-					if (t == mb.InterfaceType)
+					if (t == mb.InterfaceType || t == null)
 						return true;
 
 					var expanded_base = t.Interfaces;
@@ -2725,6 +2702,22 @@ namespace Mono.CSharp
 			return true;
 		}
 
+		public override void PrepareEmit ()
+		{
+			var s = this as Struct;
+			if (s == null || !s.HasUnmanagedCheckDone) {
+				for (int i = 0; i < Members.Count; ++i) {
+					var f = Members [i] as Field;
+					if (f == null || f.MemberType == null || !f.MemberType.IsPointer)
+						continue;
+
+					TypeManager.VerifyUnmanaged (Module, f.MemberType, f.Location);
+				}
+			}
+
+			base.PrepareEmit ();
+		}
+
 		public override void Emit ()
 		{
 			if (!has_static_constructor && HasStaticFieldInitializer) {
@@ -2973,7 +2966,7 @@ namespace Mono.CSharp
 
 	public sealed class Struct : ClassOrStruct
 	{
-		bool is_unmanaged, has_unmanaged_check_done;
+		bool is_unmanaged, has_unmanaged_check_done, requires_delayed_unmanagedtype_check;
 		bool InTransit;
 
 		// <summary>
@@ -3025,7 +3018,7 @@ namespace Mono.CSharp
 					if (ff == null)
 						continue;
 
-					ff.CharSet = (CharSet) System.Enum.Parse (typeof (CharSet), value.GetValue ().ToString ());
+					ff.CharSetValue = (CharSet) System.Enum.Parse (typeof (CharSet), value.GetValue ().ToString ());
 				}
 			}
 		}
@@ -3101,6 +3094,12 @@ namespace Mono.CSharp
 			CheckStructCycles ();
 
 			base.Emit ();
+		}
+
+		public bool HasUnmanagedCheckDone {
+			get {
+				return has_unmanaged_check_done;
+			}
 		}
 
 		bool HasUserDefaultConstructor ()
@@ -3425,7 +3424,7 @@ namespace Mono.CSharp
 					ModFlags |= Modifiers.NEW;
 					if (!IsCompilerGenerated) {
 						Report.SymbolRelatedToPreviousError (base_member);
-						if (!IsInterface && (base_member.Modifiers & (Modifiers.ABSTRACT | Modifiers.VIRTUAL | Modifiers.OVERRIDE)) != 0) {
+						if ((base_member.Kind & MemberKind.NestedMask) == 0 && !IsInterface && (base_member.Modifiers & (Modifiers.ABSTRACT | Modifiers.VIRTUAL | Modifiers.OVERRIDE)) != 0) {
 							Report.Warning (114, 2, Location, "`{0}' hides inherited member `{1}'. To make the current member override that implementation, add the override keyword. Otherwise add the new keyword",
 								GetSignatureForError (), base_member.GetSignatureForError ());
 						} else {
@@ -3436,9 +3435,16 @@ namespace Mono.CSharp
 				}
 
 				if (!IsInterface && base_member.IsAbstract && !overrides && !IsStatic) {
-					Report.SymbolRelatedToPreviousError (base_member);
-					Report.Error (533, Location, "`{0}' hides inherited abstract member `{1}'",
-						GetSignatureForError (), base_member.GetSignatureForError ());
+					switch (base_member.Kind) {
+					case MemberKind.Event:
+					case MemberKind.Indexer:
+					case MemberKind.Method:
+					case MemberKind.Property:
+						Report.SymbolRelatedToPreviousError (base_member);
+						Report.Error (533, Location, "`{0}' hides inherited abstract member `{1}'",
+							GetSignatureForError (), base_member.GetSignatureForError ());
+						break;
+					}
 				}
 			}
 
@@ -3714,7 +3720,7 @@ namespace Mono.CSharp
 		public override string GetSignatureForDocumentation ()
 		{
 			if (IsExplicitImpl)
-				return Parent.GetSignatureForDocumentation () + "." + InterfaceType.GetExplicitNameSignatureForDocumentation () + "#" + ShortName;
+				return Parent.GetSignatureForDocumentation () + "." + InterfaceType.GetSignatureForDocumentation (true) + "#" + ShortName;
 
 			return Parent.GetSignatureForDocumentation () + "." + ShortName;
 		}
@@ -3763,6 +3769,9 @@ namespace Mono.CSharp
 		public FullNamedExpression TypeExpression {
 			get {
 				return type_expr;
+			}
+			set {
+				type_expr = value;
 			}
 		}
 
@@ -3867,6 +3876,12 @@ namespace Mono.CSharp
 		public override string GetSignatureForDocumentation ()
 		{
 			return Parent.GetSignatureForDocumentation () + "." + MemberName.Basename;
+		}
+
+		public virtual void PrepareEmit ()
+		{
+			if (member_type != null && type_expr != null)
+				member_type.CheckObsoleteness (this, type_expr.Location);
 		}
 
 		protected virtual bool ResolveMemberType ()

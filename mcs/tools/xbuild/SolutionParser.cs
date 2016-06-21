@@ -353,11 +353,9 @@ namespace Mono.XBuild.CommandLine {
 
 		void EmitBeforeImports (Project p, string file)
 		{
-#if NET_4_0
 			p.AddNewImport ("$(MSBuildExtensionsPath)\\$(MSBuildToolsVersion)\\SolutionFile\\ImportBefore\\*",
 					"'$(ImportByWildcardBeforeSolution)' != 'false' and " +
 					"Exists('$(MSBuildExtensionsPath)\\$(MSBuildToolsVersion)\\SolutionFile\\ImportBefore')");
-#endif
 
 			string before_filename = Path.Combine (Path.GetDirectoryName (file), "before." + Path.GetFileName (file) + ".targets");
 			p.AddNewImport (before_filename, String.Format ("Exists ('{0}')", before_filename));
@@ -365,11 +363,9 @@ namespace Mono.XBuild.CommandLine {
 
 		void EmitAfterImports (Project p, string file)
 		{
-#if NET_4_0
 			p.AddNewImport ("$(MSBuildExtensionsPath)\\$(MSBuildToolsVersion)\\SolutionFile\\ImportAfter\\*",
 					"'$(ImportByWildcardAfterSolution)' != 'false' and " +
 					"Exists('$(MSBuildExtensionsPath)\\$(MSBuildToolsVersion)\\SolutionFile\\ImportAfter')");
-#endif
 
 			string after_filename = Path.Combine (Path.GetDirectoryName (file), "after." + Path.GetFileName (file) + ".targets");
 			p.AddNewImport (after_filename, String.Format ("Exists ('{0}')", after_filename));
@@ -514,8 +510,8 @@ namespace Mono.XBuild.CommandLine {
 				if (solutionTarget.Configuration == targetInfo.Key.Configuration &&
 						solutionTarget.Platform == targetInfo.Key.Platform) {
 					solutionConfigurationContents.AppendFormat (
-							"<ProjectConfiguration Project=\"{0}\">{1}|{2}</ProjectConfiguration>",
-					guid.ToString ("B").ToUpper (), targetInfo.Value.Configuration, targetInfo.Value.Platform);
+							"<ProjectConfiguration Project=\"{0}\" AbsolutePath=\"{1}\">{2}|{3}</ProjectConfiguration>",
+							guid.ToString ("B").ToUpper (), projectInfo.FileName, targetInfo.Value.Configuration, targetInfo.Value.Platform);
 				}
 			}
 		}

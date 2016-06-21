@@ -26,7 +26,6 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
-#if NET_4_5
 
 namespace System.Runtime.Versioning {
 	public static class CompatibilitySwitch
@@ -40,7 +39,11 @@ namespace System.Runtime.Versioning {
 		{
 			return null;
 		}
+
+		internal static string GetValueInternal (string compatibilitySwitchName)
+		{
+			return null;
+		}
 	}
 }
 
-#endif

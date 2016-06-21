@@ -5,13 +5,14 @@
  *	Gonzalo Paniagua Javier (gonzalo@ximian.com)
  *
  * Copyright (C) 2005-2009 Novell, Inc. (http://www.novell.com)
+ * Licensed under the MIT license. See LICENSE file in the project root for full license information.
  */
 
 #include <mono/metadata/appdomain.h>
 #include <mono/metadata/object-internals.h>
 #include <mono/metadata/class-internals.h>
 #include <mono/metadata/domain-internals.h>
-#include <mono/metadata/gc-internal.h>
+#include <mono/metadata/gc-internals.h>
 
 #include <mono/metadata/console-io.h>
 #include <mono/metadata/exception.h>
@@ -29,8 +30,6 @@ mono_console_handle_async_ops (void)
 MonoBoolean
 ves_icall_System_ConsoleDriver_Isatty (HANDLE handle)
 {
-	MONO_ARCH_SAVE_REGS;
-
 	return (GetFileType (handle) == FILE_TYPE_CHAR);
 }
 

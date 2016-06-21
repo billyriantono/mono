@@ -14,8 +14,11 @@
 #include <glib.h>
 #include <sys/stat.h>
 
+#include <mono/io-layer/wapi.h>
 #include <mono/io-layer/handles.h>
 #include <mono/io-layer/io.h>
+
+#include <mono/utils/mono-os-mutex.h>
 
 /* Increment this whenever an incompatible change is made to the
  * shared handle structure.
@@ -171,15 +174,15 @@ struct _WapiHandleSharedLayout
 	struct _WapiHandleShared handles[_WAPI_HANDLE_INITIAL_COUNT];
 };
 
-#define _WAPI_FILESHARE_SIZE 102400
+typedef struct _WapiHandleSharedLayout _WapiHandleSharedLayout;
 
 struct _WapiFileShare
 {
 #ifdef WAPI_FILE_SHARE_PLATFORM_EXTRA_DATA
 	WAPI_FILE_SHARE_PLATFORM_EXTRA_DATA
 #endif
-	dev_t device;
-	ino_t inode;
+	guint64 device;
+	guint64 inode;
 	pid_t opened_by_pid;
 	guint32 sharemode;
 	guint32 access;
@@ -188,15 +191,6 @@ struct _WapiFileShare
 };
 
 typedef struct _WapiFileShare _WapiFileShare;
-
-struct _WapiFileShareLayout
-{
-	guint32 hwm;
-	
-	struct _WapiFileShare share_info[_WAPI_FILESHARE_SIZE];
-};
-
-
 
 #define _WAPI_HANDLE_INVALID (gpointer)-1
 

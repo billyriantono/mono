@@ -1,6 +1,6 @@
 thisdir = tools
 
-per_profile_dirs = \
+net_4_5_dirs := \
 	al		\
 	linker		\
 	tuner		\
@@ -13,12 +13,10 @@ per_profile_dirs = \
 	resgen		\
 	gacutil		\
 	wsdl		\
-	xbuild
-
-net_4_0_dirs := \
-	$(per_profile_dirs) \
+	xbuild		\
 	csharp		\
 	corcompare	\
+	mono-api-html \
 	compiler-tester	\
 	mono-xmltool	\
 	mono-shlib-cop	\
@@ -47,17 +45,15 @@ net_4_0_dirs := \
 	cccheck		\
 	security	\
 	mdbrebase	\
-	ikdasm
+	ikdasm		\
+	mono-symbolicate	\
+	linker-analyzer
 
-net_2_0_dirs := \
-	$(per_profile_dirs)
+build_SUBDIRS = gacutil security culevel cil-stringreplacer commoncryptogenerator
+net_4_5_SUBDIRS = gacutil
+net_4_5_PARALLEL_SUBDIRS = $(net_4_5_dirs)
 
-build_SUBDIRS = gacutil security culevel
-net_4_0_SUBDIRS := $(net_4_0_dirs) $(basic_SUBDIRS)
-net_4_5_SUBDIRS := $(net_4_0_SUBDIRS)
-
-SUBDIRS = $(basic_SUBDIRS) $(net_2_0_dirs)
-DIST_SUBDIRS = $(SUBDIRS) $(net_4_0_dirs)
+SUBDIRS = $(build_SUBDIRS) $(net_4_5_dirs)
 
 include ../build/rules.make
 

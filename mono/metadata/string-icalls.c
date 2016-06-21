@@ -7,11 +7,11 @@
  *
  * Copyright 2001-2003 Ximian, Inc (http://www.ximian.com)
  * Copyright 2004-2009 Novell, Inc (http://www.novell.com)
+ * Licensed under the MIT license. See LICENSE file in the project root for full license information.
  */
 #include <config.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <signal.h>
 #include <string.h>
 #include "mono/utils/mono-membar.h"
 #include <mono/metadata/string-icalls.h>
@@ -24,7 +24,7 @@
 #include <mono/metadata/debug-helpers.h>
 #include <mono/metadata/profiler.h>
 #include <mono/metadata/profiler-private.h>
-#include <mono/metadata/gc-internal.h>
+#include <mono/metadata/gc-internals.h>
 
 /* This function is redirected to String.CreateString ()
    by mono_marshal_get_native_wrapper () */
@@ -37,27 +37,31 @@ ves_icall_System_String_ctor_RedirectToCreateString (void)
 MonoString *
 ves_icall_System_String_InternalAllocateStr (gint32 length)
 {
-	return mono_string_new_size(mono_domain_get (), length);
+	MonoError error;
+	MonoString *str = mono_string_new_size_checked (mono_domain_get (), length, &error);
+	mono_error_set_pending_exception (&error);
+
+	return str;
 }
 
 MonoString  *
 ves_icall_System_String_InternalIntern (MonoString *str)
 {
+	MonoError error;
 	MonoString *res;
-	MONO_ARCH_SAVE_REGS;
 
-	res = mono_string_intern(str);
-	if (!res)
-		mono_raise_exception (mono_domain_get ()->out_of_memory_ex);
+	res = mono_string_intern_checked (str, &error);
+	if (!res) {
+		mono_error_set_pending_exception (&error);
+		return NULL;
+	}
 	return res;
 }
 
 MonoString * 
 ves_icall_System_String_InternalIsInterned (MonoString *str)
 {
-	MONO_ARCH_SAVE_REGS;
-
-	return mono_string_is_interned(str);
+	return mono_string_is_interned (str);
 }
 
 int
@@ -66,11 +70,5 @@ ves_icall_System_String_GetLOSLimit (void)
 	int limit = mono_gc_get_los_limit ();
 
 	return (limit - 2 - G_STRUCT_OFFSET (MonoString, chars)) / 2;
-}
-
-void
-ves_icall_System_String_InternalSetLength (MonoString *str, gint32 new_length)
-{
-	mono_gc_set_string_length (str, new_length);
 }
 

@@ -40,7 +40,6 @@ public class Driver
 	bool verbose;
 	string unknownArg;
 	
-#if NET_2_0
 
 	public int Run (string[] args)
 	{
@@ -111,6 +110,9 @@ public class Driver
 						Console.WriteLine (" - Warning: ignoring '" + t + "'");
 						Console.WriteLine ("   " + ex.Message);
 					}
+				} catch (NotSupportedException ex) {
+					if (verbose)
+						Console.WriteLine (" - Warning: " + ex.Message);
 				}
 			}
 		} else {
@@ -129,6 +131,9 @@ public class Driver
 						Console.WriteLine (" - Warning: ignoring '" + type + "'");
 						Console.WriteLine ("   " + ex.Message);
 					}
+				} catch (NotSupportedException ex) {
+					if (verbose)
+						Console.WriteLine (" - Warning: " + ex.Message);
 				}
 			}
 		}
@@ -165,14 +170,6 @@ public class Driver
 		
 		return 0;
 	}
-#else
-	public int Run (string[] args)
-	{
-		Console.WriteLine ("This tool is only supported in 2.0 profile.");
-		return 1;
-	}
-
-#endif
 
 	void ParseArgs (string[] args)
 	{

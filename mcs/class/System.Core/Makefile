@@ -4,15 +4,14 @@ include ../../build/rules.make
 
 LIBRARY = System.Core.dll
 
-REFERENCE_SOURCES_FLAGS = -d:FEATURE_PAL,PFX_LEGACY_3_5
-LIB_MCS_FLAGS = $(REFERENCE_SOURCES_FLAGS) -d:INSIDE_SYSCORE -d:LIBC /r:System.dll -unsafe
+REFERENCE_SOURCES_FLAGS = -d:FEATURE_PAL,PFX_LEGACY_3_5,FEATURE_NETCORE
+LIB_REFS = System
+LIB_MCS_FLAGS = $(REFERENCE_SOURCES_FLAGS) -d:INSIDE_SYSCORE -d:LIBC -unsafe
+TXT_RESOURCE_STRINGS = ../referencesource/System.Core/System.Core.txt
 
 ifneq (2.1, $(FRAMEWORK_VERSION))
 LIB_MCS_FLAGS += -d:NET_3_5 -nowarn:1720
 endif
-
-MOBILE_DYNAMIC := $(filter monodroid xammac mobile, $(PROFILE))
-MOBILE_STATIC := $(filter mobile_static monotouch monotouch_runtime, $(PROFILE))
 
 ifdef MOBILE_DYNAMIC
 LIB_MCS_FLAGS += -d:FEATURE_CORE_DLR,FEATURE_REFEMIT
@@ -26,7 +25,8 @@ system_core_library_deps = $(the_libdir_base)Mono.Dynamic.Interpreter.dll $(syst
 LIB_MCS_FLAGS += -d:FEATURE_CORE_DLR
 
 ifneq (plaincore/,$(intermediate))
-LIB_MCS_FLAGS += -d:MONO_INTERPRETER -r:Mono.Dynamic.Interpreter.dll
+LIB_REFS += Mono.Dynamic.Interpreter
+LIB_MCS_FLAGS += -d:MONO_INTERPRETER
 endif
 
 endif
@@ -44,7 +44,17 @@ CLR_PROFILE := $(filter 2.0 4.0 4.5, $(FRAMEWORK_VERSION))
 endif
 
 ifdef CLR_PROFILE
-LIB_MCS_FLAGS += -r:Mono.Posix.dll
+LIB_REFS += Mono.Posix
+endif
+
+CC_PROFILE := $(filter monotouch% xammac, $(PROFILE))
+ifdef CC_PROFILE
+BUILT_SOURCES = \
+	../corlib/CommonCrypto/AesManaged.g.cs \
+	../corlib/CommonCrypto/AesCryptoServiceProvider.g.cs
+
+../corlib/CommonCrypto/%.g.cs:
+	$(MAKE) -C ../corlib/CommonCrypto
 endif
 
 TEST_MCS_FLAGS = $(LIB_MCS_FLAGS)
@@ -73,22 +83,3 @@ csproj-local:
 	$(MAKE) csproj-local intermediate=plaincore/
 endif
 endif
-
-#
-# Android TimeZoneInfo testing....
-#
-
-tzi.exe: ../corlib/System/AndroidPlatform.cs $(wildcard System/TimeZone*.cs) ../../build/common/Consts.cs ../Mono.Options/Mono.Options/Options.cs
-	mcs /debug+ /out:$@ /unsafe "/d:INSIDE_CORLIB;MONODROID;NET_4_0;LIBC;SELF_TEST" $^
-
-android-pull-tzdb:
-	mkdir -p android/tzdb/usr/share/zoneinfo
-	mkdir -p android/tzdb/misc/zoneinfo/zoneinfo
-	android_root=`adb shell echo '$$ANDROID_ROOT' | tr -d "\r"` ; \
-	android_data=`adb shell echo '$$ANDROID_DATA' | tr -d "\r"` ; \
-	adb $(ADB_TARGET) pull $$android_root/usr/share/zoneinfo    android/tzdb/usr/share/zoneinfo ; \
-	adb $(ADB_TARGET) pull $$android_data/misc/zoneinfo/tzdata  android/tzdb/misc/zoneinfo
-	mkdir -p android/tzdb/
-
-android-dump-tzdata: tzi.exe android-pull-tzdb
-	__XA_OVERRIDE_TIMEZONE_ID__=America/New_York ANDROID_ROOT=`pwd` ANDROID_DATA=`pwd` mono --debug tzi.exe -o android/tzdata

@@ -33,15 +33,15 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 using System.Security.Permissions;
+using System.Security.Claims;
+using Microsoft.Win32.SafeHandles;
 
 namespace System.Security.Principal {
 
 	[Serializable]
 	[ComVisible (true)]
 	public class WindowsIdentity :
-#if NET_4_5
 	System.Security.Claims.ClaimsIdentity,
-#endif
 	IIdentity, IDeserializationCallback, ISerializable, IDisposable {
 		private IntPtr _token;
 		private string _type;
@@ -52,10 +52,8 @@ namespace System.Security.Principal {
 
 		static private IntPtr invalidWindows = IntPtr.Zero;
 
-#if NET_4_5
 		[NonSerialized]
 		public new const string DefaultIssuer = "AD AUTHORITY";
-#endif
 
 		[SecurityPermission (SecurityAction.Demand, ControlPrincipal=true)]
 		public WindowsIdentity (IntPtr userToken) 
@@ -115,6 +113,15 @@ namespace System.Security.Principal {
 		public WindowsIdentity (SerializationInfo info, StreamingContext context)
 		{
 			_info = info;
+		}
+
+		internal WindowsIdentity (ClaimsIdentity claimsIdentity, IntPtr userToken)
+			: base (claimsIdentity)
+		{
+			if (userToken != IntPtr.Zero && userToken.ToInt64() > 0)
+			{
+				SetToken (userToken);
+			}
 		}
 
 		[ComVisible (false)]
@@ -177,9 +184,7 @@ namespace System.Security.Principal {
 		}
 
 		// properties
-#if NET_4_5
 		sealed override
-#endif
 		public string AuthenticationType {
 			get { return _type; }
 		}
@@ -189,11 +194,7 @@ namespace System.Security.Principal {
 			get { return (_account == WindowsAccountType.Anonymous); }
 		}
 
-#if NET_4_5
 		override
-#else
-		virtual
-#endif
 		public bool IsAuthenticated
 		{
 			get { return _authenticated; }
@@ -209,11 +210,7 @@ namespace System.Security.Principal {
 			get { return (_account == WindowsAccountType.System); }
 		}
 
-#if NET_4_5
 		override
-#else
-		virtual
-#endif
 		public string Name
 		{
 			get {
@@ -283,6 +280,16 @@ namespace System.Security.Principal {
 			info.AddValue ("m_isAuthenticated", _authenticated);
 		}
 
+		internal ClaimsIdentity CloneAsBase ()
+		{
+			return base.Clone();
+		}
+
+		internal IntPtr GetTokenInternal ()
+		{
+			return _token;
+		}
+
 		private void SetToken (IntPtr token) 
 		{
 			if (Environment.IsUnix) {
@@ -304,6 +311,10 @@ namespace System.Security.Principal {
 				if (_type == null)
 					_type = "NTLM";
 			}
+		}
+
+		public SafeAccessTokenHandle AccessToken {
+			get { throw new NotImplementedException (); }
 		}
 
 		// see mono/mono/metadata/security.c for implementation

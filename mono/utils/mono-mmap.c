@@ -5,6 +5,7 @@
  *   Mono Team (mono-list@lists.ximian.com)
  *
  * Copyright 2001-2008 Novell, Inc.
+ * Licensed under the MIT license. See LICENSE file in the project root for full license information.
  */
 
 #include "config.h"
@@ -20,17 +21,29 @@
 #if HAVE_SYS_MMAN_H
 #include <sys/mman.h>
 #endif
+#ifdef HAVE_SIGNAL_H
+#include <signal.h>
+#endif
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include <signal.h>
 #include <errno.h>
 #endif
 
 #include "mono-mmap.h"
-#include "mono-mmap-internal.h"
+#include "mono-mmap-internals.h"
 #include "mono-proclib.h"
+#include <mono/utils/mono-threads.h>
+
+
+#define BEGIN_CRITICAL_SECTION do { \
+	MonoThreadInfo *__info = mono_thread_info_current_unchecked (); \
+	if (__info) __info->inside_critical_region = TRUE;	\
+
+#define END_CRITICAL_SECTION \
+	if (__info) __info->inside_critical_region = FALSE;	\
+} while (0)	\
 
 #ifndef MAP_ANONYMOUS
 #define MAP_ANONYMOUS MAP_ANON
@@ -54,7 +67,7 @@ static void*
 malloc_shared_area (int pid)
 {
 	int size = mono_pagesize ();
-	SAreaHeader *sarea = g_malloc0 (size);
+	SAreaHeader *sarea = (SAreaHeader *) g_malloc0 (size);
 	sarea->size = size;
 	sarea->pid = pid;
 	sarea->stats_start = sizeof (SAreaHeader);
@@ -244,12 +257,6 @@ mono_shared_area_instances (void **array, int count)
 	return 0;
 }
 
-int
-mono_pages_not_faulted (void *addr, size_t length)
-{
-	return -1;
-}
-
 #else
 #if defined(HAVE_MMAP)
 
@@ -314,6 +321,7 @@ mono_valloc (void *addr, size_t length, int flags)
 	mflags |= MAP_ANONYMOUS;
 	mflags |= MAP_PRIVATE;
 
+	BEGIN_CRITICAL_SECTION;
 	ptr = mmap (addr, length, prot, mflags, -1, 0);
 	if (ptr == MAP_FAILED) {
 		int fd = open ("/dev/zero", O_RDONLY);
@@ -321,9 +329,11 @@ mono_valloc (void *addr, size_t length, int flags)
 			ptr = mmap (addr, length, prot, mflags, fd, 0);
 			close (fd);
 		}
-		if (ptr == MAP_FAILED)
-			return NULL;
 	}
+	END_CRITICAL_SECTION;
+
+	if (ptr == MAP_FAILED)
+		return NULL;
 	return ptr;
 }
 
@@ -339,7 +349,11 @@ mono_valloc (void *addr, size_t length, int flags)
 int
 mono_vfree (void *addr, size_t length)
 {
-	return munmap (addr, length);
+	int res;
+	BEGIN_CRITICAL_SECTION;
+	res = munmap (addr, length);
+	END_CRITICAL_SECTION;
+	return res;
 }
 
 /**
@@ -374,7 +388,9 @@ mono_file_map (size_t length, int flags, int fd, guint64 offset, void **ret_hand
 	if (flags & MONO_MMAP_32BIT)
 		mflags |= MAP_32BIT;
 
+	BEGIN_CRITICAL_SECTION;
 	ptr = mmap (0, length, prot, mflags, fd, offset);
+	END_CRITICAL_SECTION;
 	if (ptr == MAP_FAILED)
 		return NULL;
 	*ret_handle = (void*)length;
@@ -394,7 +410,13 @@ mono_file_map (size_t length, int flags, int fd, guint64 offset, void **ret_hand
 int
 mono_file_unmap (void *addr, void *handle)
 {
-	return munmap (addr, (size_t)handle);
+	int res;
+
+	BEGIN_CRITICAL_SECTION;
+	res = munmap (addr, (size_t)handle);
+	END_CRITICAL_SECTION;
+
+	return res;
 }
 
 /**
@@ -450,30 +472,6 @@ mono_mprotect (void *addr, size_t length, int flags)
 }
 #endif // __native_client__
 
-int
-mono_pages_not_faulted (void *addr, size_t size)
-{
-	int i;
-	gint64 count;
-	int pagesize = mono_pagesize ();
-	int npages = (size + pagesize - 1) / pagesize;
-	char *faulted = g_malloc0 (sizeof (char*) * npages);
-
-	if (mincore (addr, size, faulted) != 0) {
-		count = -1;
-	} else {
-		count = 0;
-		for (i = 0; i < npages; ++i) {
-			if (faulted [i] != 0)
-				++count;
-		}
-	}
-
-	g_free (faulted);
-
-	return count;
-}
-
 #else
 
 /* dummy malloc-based implementation */
@@ -511,12 +509,6 @@ mono_mprotect (void *addr, size_t length, int flags)
 		memset (addr, 0, length);
 	}
 	return 0;
-}
-
-int
-mono_pages_not_faulted (void *addr, size_t length)
-{
-	return -1;
 }
 
 #endif // HAVE_MMAP
@@ -631,7 +623,10 @@ mono_shared_area (void)
 		shm_unlink (buf);
 		close (fd);
 	}
+	BEGIN_CRITICAL_SECTION;
 	res = mmap (NULL, size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	END_CRITICAL_SECTION;
+
 	if (res == MAP_FAILED) {
 		shm_unlink (buf);
 		close (fd);
@@ -639,7 +634,7 @@ mono_shared_area (void)
 	}
 	/* we don't need the file descriptor anymore */
 	close (fd);
-	header = res;
+	header = (SAreaHeader *) res;
 	header->size = size;
 	header->pid = pid;
 	header->stats_start = sizeof (SAreaHeader);
@@ -683,7 +678,10 @@ mono_shared_area_for_pid (void *pid)
 	fd = shm_open (buf, O_RDONLY, S_IRUSR|S_IRGRP);
 	if (fd == -1)
 		return NULL;
+	BEGIN_CRITICAL_SECTION;
 	res = mmap (NULL, size, PROT_READ, MAP_SHARED, fd, 0);
+	END_CRITICAL_SECTION;
+
 	if (res == MAP_FAILED) {
 		close (fd);
 		return NULL;
@@ -698,7 +696,9 @@ void
 mono_shared_area_unload  (void *area)
 {
 	/* FIXME: currently we load only a page */
+	BEGIN_CRITICAL_SECTION;
 	munmap (area, mono_pagesize ());
+	END_CRITICAL_SECTION;
 }
 
 int
@@ -750,7 +750,7 @@ void*
 mono_valloc_aligned (size_t size, size_t alignment, int flags)
 {
 	/* Allocate twice the memory to be able to put the block on an aligned address */
-	char *mem = mono_valloc (NULL, size + alignment, flags);
+	char *mem = (char *) mono_valloc (NULL, size + alignment, flags);
 	char *aligned;
 
 	if (!mem)
@@ -766,3 +766,39 @@ mono_valloc_aligned (size_t size, size_t alignment, int flags)
 	return aligned;
 }
 #endif
+
+int
+mono_pages_not_faulted (void *addr, size_t size)
+{
+#ifdef HAVE_MINCORE
+	int i;
+	gint64 count;
+	int pagesize = mono_pagesize ();
+	int npages = (size + pagesize - 1) / pagesize;
+	char *faulted = (char *) g_malloc0 (sizeof (char*) * npages);
+
+	/*
+	 * We cast `faulted` to void* because Linux wants an unsigned
+	 * char* while BSD wants a char*.
+	 */
+#ifdef __linux__
+	if (mincore (addr, size, (unsigned char *)faulted) != 0) {
+#else
+	if (mincore (addr, size, (char *)faulted) != 0) {
+#endif
+		count = -1;
+	} else {
+		count = 0;
+		for (i = 0; i < npages; ++i) {
+			if (faulted [i] != 0)
+				++count;
+		}
+	}
+
+	g_free (faulted);
+
+	return count;
+#else
+	return -1;
+#endif
+}

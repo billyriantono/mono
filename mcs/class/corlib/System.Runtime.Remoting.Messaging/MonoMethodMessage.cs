@@ -59,15 +59,47 @@ namespace System.Runtime.Remoting.Messaging {
 
 		string uri;
 
-		MethodCallDictionary properties;
+		MCMDictionary properties;
 
 		Type[] methodSignature;
 
 		Identity identity;
 
+		internal static String CallContextKey = "__CallContext";
+		internal static String UriKey           = "__Uri";
 
-		[MethodImplAttribute(MethodImplOptions.InternalCall)]
-		internal extern void InitMessage (MonoMethod method, object [] out_args);
+		internal void InitMessage (MonoMethod method, object [] out_args)
+		{
+			this.method = method;
+			ParameterInfo[] paramInfo = method.GetParametersInternal ();
+			int param_count = paramInfo.Length;
+			args = new object[param_count];
+			arg_types = new byte[param_count];
+			asyncResult = null;
+			call_type = CallType.Sync;
+			names = new string[param_count];
+			for (int i = 0; i < param_count; i++) {
+				names[i] = paramInfo[i].Name;
+			}
+			bool hasOutArgs = out_args != null;
+			int j = 0;
+			for (int i = 0; i < param_count; i++) {
+				byte arg_type;
+				bool isOut = paramInfo[i].IsOut;
+				if (paramInfo[i].ParameterType.IsByRef) {
+					if (hasOutArgs)
+						args[i] = out_args[j++];
+					arg_type = 2; // OUT
+					if (!isOut)
+						arg_type |= 1; // INOUT
+				} else {
+					arg_type = 1; // IN
+					if (isOut)
+						arg_type |= 4; // IN, COPY OUT
+				}
+				arg_types[i] = arg_type;
+			}
+		}
 
 		public MonoMethodMessage (MethodBase method, object [] out_args)
 		{
@@ -92,7 +124,7 @@ namespace System.Runtime.Remoting.Messaging {
 		
 		public IDictionary Properties {
 			get {
-				if (properties == null) properties = new MethodCallDictionary (this);
+				if (properties == null) properties = new MCMDictionary (this);
 				return properties;
 			}
 		}
@@ -329,6 +361,11 @@ namespace System.Runtime.Remoting.Messaging {
 		{
 			get { return identity; }
 			set { identity = value; }
+		}
+
+		bool IInternalMessage.HasProperties()
+		{
+			return properties != null;
 		}
 
 		public bool IsAsync

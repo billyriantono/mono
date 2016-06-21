@@ -5,7 +5,7 @@
 
 using System;
 using System.Reflection;
-#if !MONOTOUCH
+#if !MONOTOUCH && !MOBILE_STATIC
 using System.Reflection.Emit;
 #endif
 using System.Threading;
@@ -17,7 +17,6 @@ namespace MonoTests.System
 	[TestFixture]
 	public class DelegateTest
 	{
-#if NET_2_0
 		
 		public class GenericClass<T> {
 			public void Method<K> (T t, K k) {}
@@ -27,7 +26,7 @@ namespace MonoTests.System
 
 
 		[Test] //See bug #372406
-#if MONOTOUCH
+#if MONOTOUCH || MOBILE_STATIC
 		[Category ("NotWorking")] // #10539
 #endif
 		public void CreateDelegate1_Method_Private_Instance ()
@@ -51,7 +50,6 @@ namespace MonoTests.System
 			Assert.IsNotNull (method, "#1");
 			Assert.AreEqual (target, method, "#2");
 		}
-#endif
 
 		[Test] // CreateDelegate (Type, MethodInfo)
 		public void CreateDelegate1_Method_Static ()
@@ -66,32 +64,18 @@ namespace MonoTests.System
 		}
 
 		[Test] // CreateDelegate (Type, MethodInfo)
-#if MONOTOUCH
+#if MONOTOUCH || MOBILE_STATIC
 		[Category ("NotWorking")] // #14163
 #endif
 		public void CreateDelegate1_Method_Instance ()
 		{
 			C c = new C ();
 			MethodInfo mi = typeof (C).GetMethod ("M");
-#if NET_2_0
 			Delegate dg = Delegate.CreateDelegate (typeof (D), mi);
 			Assert.AreSame (mi, dg.Method, "#1");
 			Assert.IsNull (dg.Target, "#2");
 			D d = (D) dg;
 			d (c);
-#else
-			try {
-				Delegate.CreateDelegate (typeof (D), mi);
-				Assert.Fail ("#1");
-			} catch (ArgumentException ex) {
-				// Method must be a static method
-				Assert.AreEqual (typeof (ArgumentException), ex.GetType (), "#2");
-				Assert.IsNull (ex.InnerException, "#3");
-				Assert.IsNotNull (ex.Message, "#4");
-				Assert.IsNotNull (ex.ParamName, "#5");
-				Assert.AreEqual ("method", ex.ParamName, "#6");
-			}
-#endif
 		}
 
 		[Test] // CreateDelegate (Type, MethodInfo)
@@ -584,7 +568,6 @@ namespace MonoTests.System
 			}
 		}
 
-#if NET_2_0
 		[Test] // CreateDelegate (Type, Object, String, Boolean, Boolean)
 		public void CreateDelegate9 ()
 		{
@@ -942,7 +925,7 @@ namespace MonoTests.System
 		}
 
 		[Test]
-#if MONOTOUCH
+#if MONOTOUCH || MOBILE_STATIC
 		[Category ("NotWorking")] // #10539
 #endif
 		public void Virtual ()
@@ -973,7 +956,7 @@ namespace MonoTests.System
 		}
 
 		[Test]
-#if MONOTOUCH
+#if MONOTOUCH || MOBILE_STATIC
 		[Category ("NotWorking")] // #14163
 #endif
 		public void NullTarget_Instance ()
@@ -1038,7 +1021,7 @@ namespace MonoTests.System
 		}
 
 		[Test] // #617161
-#if MONOTOUCH
+#if MONOTOUCH || MOBILE_STATIC
 		[Category ("NotWorking")] // #10539
 #endif
 		public void ClosedOverNullReferenceStaticMethod ()
@@ -1062,7 +1045,7 @@ namespace MonoTests.System
 		}
 
 		[Test] // #475962
-#if MONOTOUCH
+#if MONOTOUCH || MOBILE_STATIC
 		[Category ("NotWorking")] // #10539
 #endif
 		public void ClosedOverNullReferenceInstanceMethod ()
@@ -1084,6 +1067,27 @@ namespace MonoTests.System
 			Assert.IsNull (action.Target);
 
 			action_int (42);
+		}
+
+		struct FooStruct {
+			public int i, j, k, l;
+
+			public int GetProp (int a, int b, int c, int d) {
+				return i;
+			}
+		}
+
+		delegate int ByRefDelegate (ref FooStruct s, int a, int b, int c, int d);
+
+#if MONOTOUCH || MOBILE_STATIC
+		[Category ("NotWorking")]
+#endif
+		[Test]
+		public void CallVirtVType ()
+		{
+			var action = (ByRefDelegate)Delegate.CreateDelegate (typeof (ByRefDelegate), null, typeof (FooStruct).GetMethod ("GetProp"));
+			var s = new FooStruct () { i = 42 };
+			Assert.AreEqual (42, action (ref s, 1, 2, 3, 4));
 		}
 
 		class Foo {
@@ -1177,7 +1181,6 @@ namespace MonoTests.System
 			throw new NotSupportedException ();
 		}
 
-#endif
 		public static void CreateDelegateOfStaticMethodBoundToNull_Helper (object[] args) {}
 
 		[Test]
@@ -1276,7 +1279,7 @@ namespace MonoTests.System
 		{
 			string retarg (string s);
 		}
-#if !MONOTOUCH
+#if !MONOTOUCH && !MOBILE_STATIC
 		[Test]
 		public void CreateDelegateWithLdFtnAndAbstractMethod ()
 		{
@@ -1385,7 +1388,7 @@ namespace MonoTests.System
 			Assert.IsTrue (d (0, 0));
 		}
 
-#if !MONOTOUCH
+#if !MONOTOUCH && !MOBILE_STATIC
 		public static void DynInvokeWithClosedFirstArg (object a, object b)
 		{
 		}
@@ -1420,6 +1423,27 @@ namespace MonoTests.System
 			ac.DynamicInvoke (new object[] { null });
 		}
 #endif
+
+		public delegate void DoExecuteDelegate1 (C c);
+		public delegate void DoExecuteDelegate2 (C c);
+
+		[Test]
+		[ExpectedException (typeof (ArgumentException))]
+		public void DelegateCombineDifferentTypes () {
+			var b = new B ();
+			var del1 = new DoExecuteDelegate1 (b.DoExecute);
+			var del2 = new DoExecuteDelegate2 (b.DoExecute);
+			var del = Delegate.Combine (del1, del2);
+		}
+
+		[Test]
+		[ExpectedException (typeof (ArgumentException))]
+		public void DelegateRemoveDifferentTypes () {
+			var b = new B ();
+			var del1 = new DoExecuteDelegate1 (b.DoExecute);
+			var del2 = new DoExecuteDelegate2 (b.DoExecute);
+			var del = Delegate.Remove (del1, del2);
+		}
 
 		static bool Int32D2 (int x, int y)
 		{

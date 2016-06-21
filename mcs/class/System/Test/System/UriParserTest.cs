@@ -26,7 +26,6 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
-#if NET_2_0
 
 using NUnit.Framework;
 
@@ -357,7 +356,7 @@ namespace MonoTests.System {
 		}
 
 		[Test]
-		[ExpectedException (typeof (ArgumentNullException))]
+		[ExpectedException (typeof (NullReferenceException))]
 		public void IsBaseOf_UriNull ()
 		{
 			UnitTestUriParser p = new UnitTestUriParser ();
@@ -365,7 +364,7 @@ namespace MonoTests.System {
 		}
 
 		[Test]
-		[ExpectedException (typeof (ArgumentNullException))]
+		[ExpectedException (typeof (NullReferenceException))]
 		public void IsBaseOf_NullUri ()
 		{
 			UnitTestUriParser p = new UnitTestUriParser ();
@@ -373,7 +372,6 @@ namespace MonoTests.System {
 		}
 
 		[Test]
-		[Category ("NotWorking")]
 		public void IsWellFormedOriginalString ()
 		{
 			UnitTestUriParser p = new UnitTestUriParser ();
@@ -382,7 +380,6 @@ namespace MonoTests.System {
 
 		[Test]
 		[ExpectedException (typeof (NullReferenceException))]
-		[Category ("NotWorking")]
 		public void IsWellFormedOriginalString_Null ()
 		{
 			UnitTestUriParser p = new UnitTestUriParser ();
@@ -390,7 +387,6 @@ namespace MonoTests.System {
 		}
 
 		[Test]
-		[Category ("NotWorking")]
 		public void OnNewUri ()
 		{
 			string scheme = prefix + "on.new.uri";
@@ -421,7 +417,6 @@ namespace MonoTests.System {
 		}
 
 		[Test]
-		[Category ("NotWorking")]
 		public void OnRegister2 ()
 		{
 			string scheme = prefix + "onregister2";
@@ -443,7 +438,6 @@ namespace MonoTests.System {
 		}
 
 		[Test]
-		[Category ("NotWorking")]
 		public void Resolve ()
 		{
 			UriFormatException error = null;
@@ -452,7 +446,6 @@ namespace MonoTests.System {
 		}
 
 		[Test]
-		[Category ("NotWorking")]
 		public void Resolve_UriNull ()
 		{
 			UriFormatException error = null;
@@ -462,7 +455,6 @@ namespace MonoTests.System {
 
 		[Test]
 		[ExpectedException (typeof (NullReferenceException))]
-		[Category ("NotWorking")]
 		public void Resolve_NullUri ()
 		{
 			UriFormatException error = null;
@@ -501,7 +493,6 @@ namespace MonoTests.System {
 
 		[Test]
 		[ExpectedException (typeof (ArgumentOutOfRangeException))]
-		[Category ("NotWorking")]
 		public void IsKnownScheme_ExtraSpace ()
 		{
 			// same result for space before, inside or after the scheme
@@ -596,4 +587,3 @@ namespace MonoTests.System {
 	}
 }
 
-#endif

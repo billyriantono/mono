@@ -153,6 +153,11 @@ namespace System.Net.Http.Headers
 			return int.TryParse (GetStringValue (token), NumberStyles.None, CultureInfo.InvariantCulture, out value);
 		}
 
+		public bool TryGetNumericValue (Token token, out long value)
+		{
+			return long.TryParse (GetStringValue (token), NumberStyles.None, CultureInfo.InvariantCulture, out value);
+		}
+
 		public TimeSpan? TryGetTimeSpanValue (Token token)
 		{
 			int seconds;
@@ -232,10 +237,20 @@ namespace System.Net.Http.Headers
 				return false;
 			}
 
+			int parens = 1;
 			while (pos < s.Length) {
 				var ch = s[pos];
+				if (ch == '(') {
+					++parens;
+					++pos;
+					continue;
+				}
+
 				if (ch == ')') {
 					++pos;
+					if (--parens > 0)
+						continue;
+
 					var start = readToken.StartPosition;
 					value = s.Substring (start, pos - start);
 					return true;
@@ -298,6 +313,20 @@ namespace System.Net.Http.Headers
 					start = pos - 1;
 					while (pos < s.Length) {
 						ch = s [pos++];
+
+						//
+						// The backslash character ("\") MAY be used as a single-character
+   						// quoting mechanism only within quoted-string
+						//
+						if (ch == '\\') {
+							if (pos + 1 < s.Length) {
+								++pos;
+								continue;
+							}
+
+							break;
+						}
+
 						if (ch == '"') {
 							ttype = Token.Type.QuotedString;
 							break;

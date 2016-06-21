@@ -30,6 +30,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Specialized;
 using System.Net.Http.Headers;
+using System.Linq;
 
 namespace System.Net.Http
 {
@@ -232,6 +233,7 @@ namespace System.Net.Http
 		{
 			var wr = new HttpWebRequest (request.RequestUri);
 			wr.ThrowOnError = false;
+			wr.AllowWriteStreamBuffering = false;
 
 			wr.ConnectionGroupName = connectionGroupName;
 			wr.Method = request.Method.Method;
@@ -242,8 +244,6 @@ namespace System.Net.Http
 			} else {
 				wr.KeepAlive = request.Headers.ConnectionClose != true;
 			}
-
-			wr.ServicePoint.Expect100Continue = request.Headers.ExpectContinue == true;
 
 			if (allowAutoRedirect) {
 				wr.AllowAutoRedirect = true;
@@ -268,14 +268,36 @@ namespace System.Net.Http
 
 			if (useProxy) {
 				wr.Proxy = proxy;
+			} else {
+				// Disables default WebRequest.DefaultWebProxy value
+				wr.Proxy = null;
 			}
+
+			wr.ServicePoint.Expect100Continue = request.Headers.ExpectContinue == true;
 
 			// Add request headers
 			var headers = wr.Headers;
 			foreach (var header in request.Headers) {
-				foreach (var value in header.Value) {
-					headers.AddValue (header.Key, value);
+				var values = header.Value;
+				if (header.Key == "Host") {
+					//
+					// Host must be explicitly set for HttpWebRequest
+					//
+					wr.Host = request.Headers.Host;
+					continue;
 				}
+
+				if (header.Key == "Transfer-Encoding") {
+					// Chunked Transfer-Encoding is never set for HttpWebRequest. It's detected
+					// from ContentLength by HttpWebRequest
+					values = values.Where (l => l != "chunked");
+				}
+
+				var values_formated = HttpRequestHeaders.GetSingleHeaderString (header.Key, values);
+				if (values_formated == null)
+					continue;
+
+				headers.AddInternal (header.Key, values_formated);
 			}
 			
 			return wr;
@@ -318,13 +340,28 @@ namespace System.Net.Http
 
 			try {
 				using (cancellationToken.Register (l => ((HttpWebRequest)l).Abort (), wrequest)) {
-					if (request.Content != null) {
+					var content = request.Content;
+					if (content != null) {
 						var headers = wrequest.Headers;
-						foreach (var header in request.Content.Headers) {
+
+						foreach (var header in content.Headers) {
 							foreach (var value in header.Value) {
-								headers.AddValue (header.Key, value);
+								headers.AddInternal (header.Key, value);
 							}
 						}
+
+						//
+						// Content length has to be set because HttpWebRequest is running without buffering
+						//
+						var contentLength = content.Headers.ContentLength;
+						if (contentLength != null) {
+							wrequest.ContentLength = contentLength.Value;
+						} else {
+							await content.LoadIntoBufferAsync (MaxRequestContentBufferSize).ConfigureAwait (false);
+							wrequest.ContentLength = content.Headers.ContentLength.Value;
+						}
+
+						wrequest.ResendContentFactory = content.CopyTo;
 
 						var stream = await wrequest.GetRequestStreamAsync ().ConfigureAwait (false);
 						await request.Content.CopyToAsync (stream).ConfigureAwait (false);

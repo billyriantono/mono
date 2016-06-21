@@ -4,6 +4,7 @@
 // Authors:
 //	Gonzalo Paniagua Javier (gonzalo@novell.com)
 //	Atsushi Enomoto (atsushi@ximian.com)
+//	Marek Safar (marek.safar@gmail.com)
 //
 // Copyright (c) 2006-2007 Novell, Inc. (http://www.novell.com)
 //
@@ -36,56 +37,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 
 namespace System.Net.NetworkInformation {
-	public abstract class IPGlobalProperties {
-		protected IPGlobalProperties ()
-		{
-		}
-
-		public static IPGlobalProperties GetIPGlobalProperties ()
-		{
-			switch (Environment.OSVersion.Platform) {
-			case PlatformID.Unix:
-				MibIPGlobalProperties impl = null;
-				if (Directory.Exists (MibIPGlobalProperties.ProcDir)) {
-					impl = new MibIPGlobalProperties (MibIPGlobalProperties.ProcDir);
-					if (File.Exists (impl.StatisticsFile))
-						return impl;
-				}
-				if (Directory.Exists (MibIPGlobalProperties.CompatProcDir)) {
-					impl = new MibIPGlobalProperties (MibIPGlobalProperties.CompatProcDir);
-					if (File.Exists (impl.StatisticsFile))
-						return impl;
-				}
-				throw new NotSupportedException ("This platform is not supported");
-			default:
-				return new Win32IPGlobalProperties ();
-			}
-		}
-
-		public abstract TcpConnectionInformation [] GetActiveTcpConnections ();
-		public abstract IPEndPoint [] GetActiveTcpListeners ();
-		public abstract IPEndPoint [] GetActiveUdpListeners ();
-		public abstract IcmpV4Statistics GetIcmpV4Statistics ();
-		public abstract IcmpV6Statistics GetIcmpV6Statistics ();
-		public abstract IPGlobalStatistics GetIPv4GlobalStatistics ();
-		public abstract IPGlobalStatistics GetIPv6GlobalStatistics ();
-		public abstract TcpStatistics GetTcpIPv4Statistics ();
-		public abstract TcpStatistics GetTcpIPv6Statistics ();
-		public abstract UdpStatistics GetUdpIPv4Statistics ();
-		public abstract UdpStatistics GetUdpIPv6Statistics ();
-
-		public abstract string DhcpScopeName { get; }
-		public abstract string DomainName { get; }
-		public abstract string HostName { get; }
-		public abstract bool IsWinsProxy { get; }
-		public abstract NetBiosNodeType NodeType { get; }
-	}
-
-	// It expects /proc/net/snmp (or /usr/compat/linux/proc/net/snmp),
-	// formatted like:
-	// http://www.linuxdevcenter.com/linux/2000/11/16/example5.html
-	// http://www.linuxdevcenter.com/linux/2000/11/16/example2.html
-	class MibIPGlobalProperties : IPGlobalProperties
+	abstract class CommonUnixIPGlobalProperties : IPGlobalProperties
 	{
 		[DllImport ("libc")]
 		static extern int gethostname ([MarshalAs (UnmanagedType.LPArray, SizeParamIndex = 1)] byte [] name, int len);
@@ -93,6 +45,114 @@ namespace System.Net.NetworkInformation {
 		[DllImport ("libc")]
 		static extern int getdomainname ([MarshalAs (UnmanagedType.LPArray, SizeParamIndex = 1)] byte [] name, int len);
 
+		public override string DhcpScopeName {
+			get { return String.Empty; }
+		}
+
+		public override string DomainName {
+			get {
+				byte [] bytes = new byte [256];
+				if (getdomainname (bytes, 256) != 0)
+					throw new NetworkInformationException ();
+				int len = Array.IndexOf<byte> (bytes, 0);
+				return Encoding.ASCII.GetString (bytes, 0, len < 0 ? 256 : len);
+			}
+		}
+
+		public override string HostName {
+			get {
+				byte [] bytes = new byte [256];
+				if (gethostname (bytes, 256) != 0)
+					throw new NetworkInformationException ();
+				int len = Array.IndexOf<byte> (bytes, 0);
+				return Encoding.ASCII.GetString (bytes, 0, len < 0 ? 256 : len);
+			}
+		}
+
+		public override bool IsWinsProxy {
+			get { return false; } // no WINS
+		}
+
+		public override NetBiosNodeType NodeType {
+			get { return NetBiosNodeType.Unknown; } // no NetBios
+		}
+	}
+
+	class UnixIPGlobalProperties : CommonUnixIPGlobalProperties
+	{
+		public override TcpConnectionInformation [] GetActiveTcpConnections ()
+		{
+			throw new NotImplementedException ();
+		}
+
+		public override IPEndPoint [] GetActiveTcpListeners ()
+		{
+			throw new NotImplementedException ();
+		}
+
+		public override IPEndPoint [] GetActiveUdpListeners ()
+		{
+			throw new NotImplementedException ();
+		}
+
+		public override IcmpV4Statistics GetIcmpV4Statistics ()
+		{
+			throw new NotImplementedException ();
+		}
+
+		public override IcmpV6Statistics GetIcmpV6Statistics ()
+		{
+			throw new NotImplementedException ();
+		}
+
+		public override IPGlobalStatistics GetIPv4GlobalStatistics ()
+		{
+			throw new NotImplementedException ();
+		}
+
+		public override IPGlobalStatistics GetIPv6GlobalStatistics ()
+		{
+			throw new NotImplementedException ();
+		}
+
+		public override TcpStatistics GetTcpIPv4Statistics ()
+		{
+			throw new NotImplementedException ();
+		}
+
+		public override TcpStatistics GetTcpIPv6Statistics ()
+		{
+			throw new NotImplementedException ();
+		}
+
+		public override UdpStatistics GetUdpIPv4Statistics ()
+		{
+			throw new NotImplementedException ();
+		}
+
+		public override UdpStatistics GetUdpIPv6Statistics ()
+		{
+			throw new NotImplementedException ();
+		}
+	}
+
+#if MONODROID
+	sealed class AndroidIPGlobalProperties : UnixIPGlobalProperties
+	{
+		public override string DomainName {
+			get {
+				return String.Empty;
+			}
+		}
+	}
+#endif
+
+	// It expects /proc/net/snmp (or /usr/compat/linux/proc/net/snmp),
+	// formatted like:
+	// http://www.linuxdevcenter.com/linux/2000/11/16/example5.html
+	// http://www.linuxdevcenter.com/linux/2000/11/16/example2.html
+	class MibIPGlobalProperties : UnixIPGlobalProperties
+	{
 		public const string ProcDir = "/proc";
 		public const string CompatProcDir = "/usr/compat/linux/proc";
 
@@ -227,7 +287,7 @@ namespace System.Net.NetworkInformation {
 				IPEndPoint local = ToEndpoint (list [i] [1]);
 				IPEndPoint remote = ToEndpoint (list [i] [2]);
 				TcpState state = (TcpState) int.Parse (list [i] [3], NumberStyles.HexNumber);
-				ret [i] = new TcpConnectionInformationImpl (local, remote, state);
+				ret [i] = new SystemTcpConnectionInformation (local, remote, state);
 			}
 			return ret;
 		}
@@ -289,40 +349,9 @@ namespace System.Net.NetworkInformation {
 		{
 			return new MibUdpStatistics (GetProperties6 ("Udp6"));
 		}
-
-		public override string DhcpScopeName {
-			get { return String.Empty; }
-		}
-
-		public override string DomainName {
-			get {
-				byte [] bytes = new byte [256];
-				if (getdomainname (bytes, 256) != 0)
-					throw new NetworkInformationException ();
-				int len = Array.IndexOf<byte> (bytes, 0);
-				return Encoding.ASCII.GetString (bytes, 0, len < 0 ? 256 : len);
-			}
-		}
-
-		public override string HostName {
-			get {
-				byte [] bytes = new byte [256];
-				if (gethostname (bytes, 256) != 0)
-					throw new NetworkInformationException ();
-				int len = Array.IndexOf<byte> (bytes, 0);
-				return Encoding.ASCII.GetString (bytes, 0, len < 0 ? 256 : len);
-			}
-		}
-
-		public override bool IsWinsProxy {
-			get { return false; } // no WINS
-		}
-
-		public override NetBiosNodeType NodeType {
-			get { return NetBiosNodeType.Unknown; } // no NetBios
-		}
 	}
 
+#if !MOBILE
 	class Win32IPGlobalProperties : IPGlobalProperties
 	{
 		public const int AF_INET = 2;
@@ -605,7 +634,7 @@ namespace System.Net.NetworkInformation {
 			}
 
 			public TcpConnectionInformation TcpInfo {
-				get { return new TcpConnectionInformationImpl (LocalEndPoint, RemoteEndPoint, State); }
+				get { return new SystemTcpConnectionInformation (LocalEndPoint, RemoteEndPoint, State); }
 			}
 		}
 
@@ -629,7 +658,7 @@ namespace System.Net.NetworkInformation {
 			}
 
 			public TcpConnectionInformation TcpInfo {
-				get { return new TcpConnectionInformationImpl (LocalEndPoint, RemoteEndPoint, State); }
+				get { return new SystemTcpConnectionInformation (LocalEndPoint, RemoteEndPoint, State); }
 			}
 		}
 
@@ -656,4 +685,5 @@ namespace System.Net.NetworkInformation {
 			}
 		}
 	}
+#endif
 }

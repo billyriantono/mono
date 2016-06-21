@@ -29,9 +29,11 @@
 
 //#define SPEW
 
-#if NET_2_0
-
 using System;
+using System.IO;
+using System.Xml;
+using System.Xml.Serialization;
+using System.Xml.Schema;
 using System.Text;
 using System.Configuration;
 using System.ComponentModel;
@@ -169,12 +171,12 @@ namespace MonoTests.System.Configuration {
 
 			IEnumerator props = settings.Properties.GetEnumerator();
 			Assert.IsNotNull (props, "A1");
-			
-			Assert.IsTrue (props.MoveNext(), "A2");
-			Assert.AreEqual ("Address", ((SettingsProperty)props.Current).Name, "A3");
 
 			Assert.IsTrue (props.MoveNext(), "A4");
-			Assert.AreEqual ("Username", ((SettingsProperty)props.Current).Name, "A5");
+			Assert.AreEqual ("Address", ((SettingsProperty)props.Current).Name, "A5");
+			
+			Assert.IsTrue (props.MoveNext(), "A2");
+			Assert.AreEqual ("Username", ((SettingsProperty)props.Current).Name, "A3");
 
 			Assert.AreEqual ("root", settings.Username, "A6");
 			Assert.AreEqual ("8 Cambridge Center", settings.Address, "A7");
@@ -285,16 +287,7 @@ namespace MonoTests.System.Configuration {
 		[Test]
 		public void TestSettings2_Properties ()
 		{
-			// This test will fail when there are newer versions
-			// of the test assemblies - so conditionalize it in
-			// such cases.
-#if   NET_4_5
-			string expected = "MonoTests.System.Configuration.ProviderPoker, System_test_net_4_5, Version=0.0.0.0";
-#elif NET_4_0
-			string expected = "MonoTests.System.Configuration.ProviderPoker, System_test_net_4_0, Version=0.0.0.0";
-#else
-			string expected = "MonoTests.System.Configuration.ProviderPoker, System_test_net_2_0, Version=0.0.0.0";
-#endif
+			string expected = "MonoTests.System.Configuration.ProviderPoker, net_4_x_System_test, Version=0.0.0.0";
 			Assert.AreEqual (expected, new SettingsProviderAttribute (typeof (ProviderPoker)).ProviderTypeName.Substring (0, expected.Length), "#1");
 			TestSettings2 settings = new TestSettings2 ();
 
@@ -401,19 +394,19 @@ namespace MonoTests.System.Configuration {
 			var holder = new Bug8592ConfHolder ();
 			holder.Reset ();
 			holder.Save ();
-			Assert.AreEqual ("", holder.TestKey1OnHolder);
+			Assert.AreEqual ("", holder.TestKey1OnHolder, "#1");
 			holder.TestKey1OnHolder = "candy";
-			Assert.AreEqual ("candy", holder.TestKey1OnHolder);
+			Assert.AreEqual ("candy", holder.TestKey1OnHolder, "#2");
 			holder.Reload ();
-			Assert.AreEqual ("", holder.TestKey1OnHolder);
+			Assert.AreEqual ("", holder.TestKey1OnHolder, "#3");
 			holder.TestKey1OnHolder = "candy";
-			Assert.AreEqual ("candy", holder.TestKey1OnHolder);
+			Assert.AreEqual ("candy", holder.TestKey1OnHolder, "#4");
 			holder.Save ();
-			Assert.AreEqual ("candy", holder.TestKey1OnHolder);
+			Assert.AreEqual ("candy", holder.TestKey1OnHolder, "#5");
 			holder.Reload ();
-			Assert.AreEqual ("candy", holder.TestKey1OnHolder);
+			Assert.AreEqual ("candy", holder.TestKey1OnHolder, "#6");
 			holder.Reset ();
-			Assert.AreEqual ("", holder.TestKey1OnHolder);
+			Assert.AreEqual ("", holder.TestKey1OnHolder, "#7");
 		}
 
 		class Bug8533ConfHolder1 : ApplicationSettingsBase {
@@ -454,21 +447,77 @@ namespace MonoTests.System.Configuration {
 		public void TestBug8533ConfHandlerWronglyMixedUp ()
 		{
 			var holder1 = new Bug8533ConfHolder1 ();
-			var holder2 = new Bug8533ConfHolder2 ();
 			holder1.TestKey1OnHolder1 = "candy";
-			holder2.TestKey1OnHolder2 = "donut";
 			holder1.TestKey = "eclair";
+			Assert.AreEqual ("", holder1.TestKey1OnHolder2, "#-1");
 			holder1.Save ();
-			holder2.Save ();
+			Assert.AreEqual ("", holder1.TestKey1OnHolder2, "#0");
 			holder1.Reload ();
+			
+			var holder2 = new Bug8533ConfHolder2 ();
+			holder2.TestKey1OnHolder2 = "donut";
+			Assert.AreEqual ("", holder1.TestKey1OnHolder2, "#1");
+			holder2.Save ();
 			holder2.Reload();
-			Assert.AreEqual ("", holder1.TestKey1OnHolder2);
-			Assert.AreEqual ("candy", holder1.TestKey1OnHolder1);
-			Assert.AreEqual ("donut", holder2.TestKey1OnHolder2);
-			Assert.AreEqual ("eclair", holder1.TestKey);
-			Assert.AreEqual ("", holder2.TestKey);
+			Assert.AreEqual ("candy", holder1.TestKey1OnHolder1, "#2");
+			Assert.AreEqual ("donut", holder2.TestKey1OnHolder2, "#3");
+			Assert.AreEqual ("eclair", holder1.TestKey, "#4");
+			Assert.AreEqual ("", holder2.TestKey, "#5");
+		}
+
+		class Settings : ApplicationSettingsBase
+		{
+			[UserScopedSetting]
+			public WindowPositionList WindowPositions {
+				get {
+					return ((WindowPositionList)(this ["WindowPositions"]));
+				}
+				set {
+					this ["WindowPositions"] = value;
+				}
+			}
+		}
+
+		[Serializable]
+		public class WindowPositionList : IXmlSerializable
+		{
+			public XmlSchema GetSchema ()
+			{
+				return null;
+			}
+
+			public void ReadXml (XmlReader reader)
+			{
+				reader.ReadStartElement ("sampleNode");
+				reader.ReadEndElement ();
+			}
+
+			public void WriteXml (XmlWriter writer)
+			{
+				writer.WriteStartElement ("sampleNode");
+				writer.WriteEndElement ();
+			}
+		}
+
+		[Test] //Covers 36388
+		public void XmlHeader ()
+		{
+			try {
+				var settings = new Settings ();
+				settings.Reset ();
+				settings.Save ();
+
+				settings.WindowPositions = new WindowPositionList ();
+
+				settings.Save ();
+				// If Reloads fails then saved data is corrupted
+				settings.Reload ();
+			} catch (ConfigurationErrorsException e) {
+				// Delete corrupted config file so other test won't fail.
+				File.Delete (e.Filename);
+				Assert.Fail ("Invalid data was saved to config file.");
+			}
 		}
 	}
 }
 
-#endif

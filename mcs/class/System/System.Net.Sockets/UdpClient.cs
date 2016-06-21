@@ -33,9 +33,7 @@
 
 using System;
 using System.Net;
-#if NET_4_5
 using System.Threading.Tasks;
-#endif
 
 namespace System.Net.Sockets
 {
@@ -300,7 +298,7 @@ namespace System.Net.Sockets
 			CheckDisposed ();
 
 			byte [] recBuffer = new byte [65536]; // Max. size
-			EndPoint endPoint = new IPEndPoint (IPAddress.Any, 0);
+			EndPoint endPoint = (EndPoint) remoteEP;
 			int dataRead = socket.ReceiveFrom (recBuffer, ref endPoint);
 			if (dataRead < recBuffer.Length)
 				recBuffer = CutArray (recBuffer, dataRead);
@@ -604,7 +602,6 @@ namespace System.Net.Sockets
 		}		
 #endregion
 
-#if NET_4_5
 		
 		public Task<UdpReceiveResult> ReceiveAsync ()
 		{
@@ -634,7 +631,6 @@ namespace System.Net.Sockets
 			}, EndSend, t);
  
 		}
-#endif
 	}
 }
 

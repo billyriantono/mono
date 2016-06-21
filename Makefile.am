@@ -4,25 +4,16 @@ AM_CFLAGS = $(WERROR_CFLAGS)
 
 MONOTOUCH_SUBDIRS = $(libgc_dir) eglib/src mono
 
+# Some tools might not build when cross-compiling
 if CROSS_COMPILING
-SUBDIRS = po $(libgc_dir) eglib mono $(ikvm_native_dir) support data runtime scripts man samples msvc $(docs_dir)
+tools_dir =
+else
+tools_dir = tools
+endif
+
+SUBDIRS = po $(libgc_dir) eglib mono $(ikvm_native_dir) support data runtime scripts man samples $(tools_dir) msvc $(docs_dir) acceptance-tests llvm
 # Keep in sync with SUBDIRS
-## 'tools' is not normally built
-DIST_SUBDIRS = m4 po $(libgc_dir) eglib mono ikvm-native support data runtime scripts man samples tools msvc docs
-else
-if ONLY_MONOTOUCH
-SUBDIRS = $(MONOTOUCH_SUBDIRS) runtime
-else
-if ONLY_XAMMAC
-SUBDIRS = $(libgc_dir) eglib/src mono runtime
-else
-SUBDIRS = po $(libgc_dir) eglib mono $(ikvm_native_dir) support data runtime scripts man samples msvc $(docs_dir)
-# Keep in sync with SUBDIRS
-## 'tools' is not normally built
-DIST_SUBDIRS = m4 po $(libgc_dir) eglib mono ikvm-native support data runtime scripts man samples tools msvc docs
-endif
-endif
-endif
+DIST_SUBDIRS = m4 po $(libgc_dir) eglib mono ikvm-native support data runtime scripts man samples tools msvc docs acceptance-tests llvm
 
 all: update_submodules
 
@@ -33,15 +24,15 @@ update_submodules:
 .PHONY: update_submodules
 
 EXTRA_DIST= \
-        README.md \
-	    LICENSE \
-	    autogen.sh \
-	    build-mingw32.sh \
-	    mkinstalldirs \
-	    mono-uninstalled.pc.in \
-	    winconfig.h \
-	    mono-core.spec \
-	    external
+	README.md 		\
+	LICENSE 		\
+	autogen.sh 		\
+	mkinstalldirs 		\
+	mono-uninstalled.pc.in 	\
+	winconfig.h 		\
+	code_of_conduct.md 	\
+	external		\
+	mcs/class/referencesource
 
 DISTCHECK_CONFIGURE_FLAGS = EXTERNAL_MCS=false EXTERNAL_RUNTIME=false
 
@@ -52,7 +43,7 @@ dist-hook:
 	d=`cd $(distdir)/mcs && pwd`; cd $(mcs_topdir) && $(MAKE) distdir=$$d dist-recursive
 	rm -rf `find $(top_distdir)/external -path '*\.git'`
 	rm -f `find $(top_distdir)/external -path '*\.exe'`
-	rm -f `find $(top_distdir)/external -path '*\.dll' -not -path '*/reference-assemblies/v4\.0*'`
+	rm -f `find $(top_distdir)/external -path '*\.dll' -not -path '*/binary-reference-assemblies/*'`
 	cp mcs/class/lib/basic/System.Configuration.dll mcs/class/lib/monolite/
 	cp mcs/class/lib/basic/System.Security.dll mcs/class/lib/monolite/
 # Disable this for now because it is very slow and causes wrench to timeout:
@@ -66,7 +57,7 @@ DISTCLEANFILES= mono-uninstalled.pc
 mcslib = $(mcs_topdir)/class/lib
 monolite = $(mcslib)/monolite
 mono_corlib_version = $(shell sed -n "s/\#define MONO_CORLIB_VERSION //p" $(srcdir)/mono/metadata/appdomain.c)
-monolite_url = http://storage.bos.xamarin.com/mono-dist-master/latest/monolite-$(mono_corlib_version)-latest.tar.gz
+monolite_url = http://download.mono-project.com/monolite/monolite-$(mono_corlib_version)-latest.tar.gz
 .PHONY: get-monolite-latest 
 get-monolite-latest:
 	-rm -fr $(mcslib)/monolite-*
@@ -75,6 +66,10 @@ get-monolite-latest:
 	test ! -d $(monolite) || mv -f $(monolite) $(monolite).old
 	cd $(mcslib) && { (wget -O- $(monolite_url) || curl $(monolite_url)) | gzip -d | tar xf - ; }
 	cd $(mcslib) && mv -f monolite-* monolite
+
+.PHONY: check-ci
+check-ci:
+	MONO_LLVMONLY=$(MONO_LLVMONLY) $(srcdir)/scripts/ci/run-test-$(TEST_PROFILE).sh
 
 .PHONY: validate do-build-mono-mcs mcs-do-clean mcs-do-tests
 validate: do-build-mono-mcs
@@ -161,6 +156,7 @@ package-inputs:
 		 read libou;  echo "      <library_output>$$libou</library_output>"; \
 		 read fx_ver; echo "      <fx_version>$$fx_ver</fx_version>"; \
 		 read profile; echo "      <profile>$$profile</profile>"; \
+		 read resxt;  echo "      <resources>$$resxt</resources>"; \
 		 read resp;   echo "      <response>$$resp</response>"; \
 		 echo "    </project>") >> msvc/scripts/order.xml; \
 	done
@@ -172,3 +168,7 @@ update-llvm-version:
 	REV=`$(LLVM_DIR)/bin/llvm-config --version` && sed -e "s,expected_llvm_version=.*,expected_llvm_version=\"$$REV\"," < configure.ac > tmp && mv tmp configure.ac && echo "Version set to $$REV."
 
 
+update-solution-files:
+	make update-csproj
+	make package-inputs
+	(cd msvc/scripts; make genproj.exe; mono genproj.exe)

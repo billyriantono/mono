@@ -44,9 +44,6 @@ using System.Security;
 using System.Security.Permissions;
 using System.Diagnostics.SymbolStore;
 
-#if !NET_4_5
-using TypeInfo = System.Type;
-#endif
 
 namespace System.Reflection.Emit
 {
@@ -58,8 +55,8 @@ namespace System.Reflection.Emit
 	{
 #pragma warning disable 169		
 		#region Sync with reflection.h
-		private string tname;
-		private string nspace;
+		private string tname; // name in internal form
+		private string nspace; // namespace in internal form
 		private Type parent;
 		private Type nesting_type;
 		internal Type[] interfaces;
@@ -84,7 +81,7 @@ namespace System.Reflection.Emit
 		#endregion
 #pragma warning restore 169		
 		
-		string fullname;
+		TypeName fullname;
 		bool createTypeCalled;
 		private Type underlying_type;
 
@@ -116,8 +113,9 @@ namespace System.Reflection.Emit
 			this.attrs = attr;
 			this.class_size = UnspecifiedTypeSize;
 			this.table_idx = table_idx;
-			fullname = this.tname = table_idx == 1 ? "<Module>" : "type_" + table_idx.ToString ();
+			this.tname = table_idx == 1 ? "<Module>" : "type_" + table_idx.ToString ();
 			this.nspace = String.Empty;
+			this.fullname = TypeIdentifiers.WithoutEscape(this.tname);
 			pmodule = mb;
 			setup_internal_class (this);
 		}
@@ -165,7 +163,7 @@ namespace System.Reflection.Emit
 
 		public override string AssemblyQualifiedName {
 			get {
-				return fullname + ", " + Assembly.FullName;
+				return fullname.DisplayName + ", " + Assembly.FullName;
 			}
 		}
 
@@ -212,18 +210,19 @@ namespace System.Reflection.Emit
 			}
 		}
 
-		string GetFullName ()
+		TypeName GetFullName ()
 		{
+			TypeIdentifier ident = TypeIdentifiers.FromInternal (tname);
 			if (nesting_type != null)
-				return String.Concat (nesting_type.FullName, "+", tname);
+				return TypeNames.FromDisplay (nesting_type.FullName).NestedName (ident);
 			if ((nspace != null) && (nspace.Length > 0))
-				return String.Concat (nspace, ".", tname);
-			return tname;
+				return TypeIdentifiers.FromInternal (nspace, ident);
+			return ident;
 		}
 	
 		public override string FullName {
 			get {
-				return fullname;
+				return fullname.DisplayName;
 			}
 		}
 	
@@ -356,7 +355,7 @@ namespace System.Reflection.Emit
 					}
 				}
 				if (binder == null)
-					binder = Binder.DefaultBinder;
+					binder = DefaultBinder;
 				return (ConstructorInfo) binder.SelectMethod (bindingAttr, match,
 															  types, modifiers);
 			}
@@ -449,6 +448,12 @@ namespace System.Reflection.Emit
 		public TypeBuilder DefineNestedType (string name, TypeAttributes attr, Type parent, PackingSize packSize)
 		{
 			return DefineNestedType (name, attr, parent, null, packSize, UnspecifiedTypeSize);
+		}
+
+		public TypeBuilder DefineNestedType (string name, TypeAttributes attr, Type parent, PackingSize packSize,
+			                             int typeSize)
+		{
+			return DefineNestedType (name, attr, parent, null, packSize, typeSize);
 		}
 
 		[ComVisible (true)]
@@ -683,12 +688,10 @@ namespace System.Reflection.Emit
 			return DefineProperty (name, attributes, 0, returnType, null, null, parameterTypes, null, null);
 		}
 		
-#if NET_4_0
 		public PropertyBuilder DefineProperty (string name, PropertyAttributes attributes, CallingConventions callingConvention, Type returnType, Type[] parameterTypes)
 		{
 			return DefineProperty (name, attributes, callingConvention, returnType , null, null, parameterTypes, null, null);
 		}	
-#endif
 
 		public PropertyBuilder DefineProperty (string name, PropertyAttributes attributes, Type returnType, Type[] returnTypeRequiredCustomModifiers, Type[] returnTypeOptionalCustomModifiers, Type[] parameterTypes, Type[][] parameterTypeRequiredCustomModifiers, Type[][] parameterTypeOptionalCustomModifiers)
 		{
@@ -757,9 +760,7 @@ namespace System.Reflection.Emit
 			return CreateTypeInfo ();
 		}
 		
-#if NET_4_5
 		public
-#endif
 		TypeInfo CreateTypeInfo ()
 		{
 			/* handle nesting_type */
@@ -921,6 +922,7 @@ namespace System.Reflection.Emit
 		/* Needed to keep signature compatibility with MS.NET */
 		public override EventInfo[] GetEvents ()
 		{
+			const BindingFlags DefaultBindingFlags = BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance;
 			return GetEvents (DefaultBindingFlags);
 		}
 
@@ -1199,46 +1201,10 @@ namespace System.Reflection.Emit
 		{
 			check_created ();
 
-			bool ignoreCase = ((bindingAttr & BindingFlags.IgnoreCase) != 0);
-			MethodInfo[] methods = GetMethodsByName (name, bindingAttr, ignoreCase, this);
-			MethodInfo found = null;
-			MethodBase[] match;
-			int typesLen = (types != null) ? types.Length : 0;
-			int count = 0;
-			
-			foreach (MethodInfo m in methods) {
-				// Under MS.NET, Standard|HasThis matches Standard...
-				if (callConvention != CallingConventions.Any && ((m.CallingConvention & callConvention) != callConvention))
-					continue;
-				found = m;
-				count++;
-			}
+			if (types == null)
+				return created.GetMethod (name, bindingAttr);
 
-			if (count == 0)
-				return null;
-			
-			if (count == 1 && typesLen == 0) 
-				return found;
-
-			match = new MethodBase [count];
-			if (count == 1)
-				match [0] = found;
-			else {
-				count = 0;
-				foreach (MethodInfo m in methods) {
-					if (callConvention != CallingConventions.Any && ((m.CallingConvention & callConvention) != callConvention))
-						continue;
-					match [count++] = m;
-				}
-			}
-			
-			if (types == null) 
-				return (MethodInfo) Binder.FindMostDerivedMatch (match);
-
-			if (binder == null)
-				binder = Binder.DefaultBinder;
-			
-			return (MethodInfo)binder.SelectMethod (bindingAttr, match, types, modifiers);
+			return created.GetMethod (name, bindingAttr, binder, callConvention, types, modifiers);
 		}
 
 		public override Type GetNestedType (string name, BindingFlags bindingAttr)
@@ -1607,7 +1573,8 @@ namespace System.Reflection.Emit
 			check_not_created ();
 
 			string typeName = "$ArrayType$" + size;
-			Type datablobtype = pmodule.GetRegisteredType (fullname + "+" + typeName);
+			TypeIdentifier ident = TypeIdentifiers.WithoutEscape (typeName);
+			Type datablobtype = pmodule.GetRegisteredType (fullname.NestedName(ident));
 			if (datablobtype == null) {
 				TypeBuilder tb = DefineNestedType (typeName,
 					TypeAttributes.NestedPrivate|TypeAttributes.ExplicitLayout|TypeAttributes.Sealed,
@@ -1906,19 +1873,6 @@ namespace System.Reflection.Emit
 				return res;
 		}
 
-		internal TypeCode GetTypeCodeInternal () {
-			if (parent == pmodule.assemblyb.corlib_enum_type) {
-				for (int i = 0; i < num_fields; ++i) {
-					FieldBuilder f = fields [i];
-					if (!f.IsStatic)
-						return Type.GetTypeCode (f.FieldType);
-				}
-				throw new InvalidOperationException ("Enum basetype field not defined");
-			} else {
-				return Type.GetTypeCodeInternal (this);
-			}
-		}
-
 
 		void _TypeBuilder.GetIDsOfNames([In] ref Guid riid, IntPtr rgszNames, uint cNames, uint lcid, IntPtr rgDispId)
 		{
@@ -1946,7 +1900,6 @@ namespace System.Reflection.Emit
 			}
 		}
 
-#if NET_4_5
 		public override bool IsConstructedGenericType {
 			get { return false; }
 		}
@@ -1955,7 +1908,6 @@ namespace System.Reflection.Emit
 		{
 			return base.IsAssignableFrom (typeInfo);
 		}
-#endif
 	}
 }
 #endif

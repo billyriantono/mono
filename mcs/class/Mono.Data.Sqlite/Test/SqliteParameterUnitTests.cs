@@ -61,7 +61,7 @@ namespace MonoTests.Mono.Data.Sqlite
 			textP.Value=builder.ToString();
 			floatP.Value=Convert.ToInt64(random.Next(999));
 			integerP.Value=random.Next(999);
-			blobP.Value=System.Text.Encoding.UTF8.GetBytes("\u05D0\u05D1\u05D2" + builder.ToString());
+			blobP.Value=global::System.Text.Encoding.UTF8.GetBytes("\u05D0\u05D1\u05D2" + builder.ToString());
 			
 			SqliteCommand selectCmd = new SqliteCommand("SELECT * from t1", _conn);
 
@@ -78,11 +78,9 @@ namespace MonoTests.Mono.Data.Sqlite
 					Assert.AreEqual(reader["i"], integerP.Value);
 					
 					object compareValue;
-#if NET_2_0
 					if (blobP.Value is byte[])
-						compareValue = System.Text.Encoding.UTF8.GetString ((byte[])blobP.Value);
+						compareValue = global::System.Text.Encoding.UTF8.GetString ((byte[])blobP.Value);
 					else
-#endif
 						compareValue = blobP.Value;
 					Assert.AreEqual(reader["b"], compareValue);
 					Assert.AreEqual(reader.Read(), false);

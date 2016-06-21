@@ -10,7 +10,7 @@
 using System;
 using System.Threading;
 using System.Reflection;
-#if !MONOTOUCH
+#if !MONOTOUCH && !MOBILE_STATIC
 using System.Reflection.Emit;
 #endif
 using System.Runtime.Serialization;
@@ -93,7 +93,7 @@ public class ModuleTest
 	}
 
 	// Some of these tests overlap with the tests for ModuleBuilder
-#if !MONOTOUCH
+#if !MONOTOUCH && !MOBILE_STATIC
 	[Test]
 	[Category("NotDotNet")] // path length can cause suprious failures
 	public void TestGlobalData () {
@@ -155,7 +155,6 @@ public class ModuleTest
 	}
 #endif
 
-#if NET_2_0
 	[Test]
 	public void ResolveType ()
 	{
@@ -194,19 +193,19 @@ public class ModuleTest
 
 		try {
 			module.ResolveMethod (1234);
-			Assert.Fail ();
+			Assert.Fail ("1234");
 		} catch (ArgumentException) {
 		}
 
 		try {
 			module.ResolveMethod (t.MetadataToken);
-			Assert.Fail ();
+			Assert.Fail ("MetadataToken");
 		} catch (ArgumentException) {
 		}
 
 		try {
-			module.ResolveMethod (t.GetMethod ("ResolveMethod").MetadataToken + 10000);
-			Assert.Fail ();
+			module.ResolveMethod (t.GetMethod ("ResolveMethod").MetadataToken + 100000);
+			Assert.Fail ("GetMethod");
 		} catch (ArgumentOutOfRangeException) {
 		}
 	}
@@ -304,7 +303,6 @@ public class ModuleTest
 		MethodBase res = mod.ResolveMethod (method.MetadataToken);
 		Assert.AreEqual (method, res, "#1");
 	}
-#endif
 
 	[Test]
 	public void FindTypes ()
@@ -330,8 +328,9 @@ public class ModuleTest
 		Module m = typeof (ModuleTest).Module;
 		m.GetObjectData (null, new StreamingContext (StreamingContextStates.All));
 	}
-#if !MONOTOUCH
+#if !MONOTOUCH && !MOBILE_STATIC
 	[Test]
+	[Category ("AndroidNotWorking")] // Mono.CompilerServices.SymbolWriter not available for Xamarin.Android
 	public void GetTypes ()
 	{
 		AssemblyName newName = new AssemblyName ();

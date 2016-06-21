@@ -40,35 +40,24 @@ namespace Microsoft.Build.Utilities
 	{
 		Version11,
 		Version20,
-#if NET_3_5
 		Version30,
 		Version35,
-#endif
-#if NET_4_0
 		Version40,
-#endif
-#if NET_4_5
 		Version45,
-#endif
 #if XBUILD_12
 		Version451,
 #endif
 #if XBUILD_14
-		Version453,
+		Version46,
+		Version461,
 #endif
 
 #if XBUILD_14
-		VersionLatest = Version453
+		VersionLatest = Version461
 #elif XBUILD_12
 		VersionLatest = Version451
-#elif NET_4_5
-		VersionLatest = Version45
-#elif NET_4_0
-		VersionLatest = Version40
-#elif NET_3_5
-		VersionLatest = Version35
 #else
-		VersionLatest = Version20
+		VersionLatest = Version45
 #endif
 	}
 }

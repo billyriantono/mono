@@ -51,13 +51,22 @@ namespace MonoTests.System.Xml
 		public void CreateEvidenceForUrl_Basic ()
 		{
 			Evidence e = XmlSecureResolver.CreateEvidenceForUrl (null);
+#if FEATURE_MONO_CAS
 			Assert.AreEqual (0, e.Count, "null");
+#else
+			Assert.IsNull (e);
+#endif
 
 			e = XmlSecureResolver.CreateEvidenceForUrl (String.Empty);
+#if FEATURE_MONO_CAS
 			Assert.AreEqual (0, e.Count, "String.Empty");
+#else
+			Assert.IsNull (e);
+#endif
 		}
 
 		[Test]
+		[Ignore ("This test doesn't work for referencesource anymore.")]
 		public void CreateEvidenceForUrl_Local ()
 		{
 			// "normal" path
@@ -92,6 +101,7 @@ namespace MonoTests.System.Xml
 		}
 
 		[Test]
+		[Ignore ("This test doesn't work for referencesource anymore.")]
 		public void CreateEvidenceForUrl_Http ()
 		{
 			// http://

@@ -15,6 +15,8 @@ using System.Net;
 using System.Net.Sockets;
 using NUnit.Framework;
 
+using MonoTests.Helpers;
+
 namespace MonoTests.System.Net.Sockets
 {
 	[TestFixture]
@@ -23,8 +25,9 @@ namespace MonoTests.System.Net.Sockets
 		[Test]
 		public void TcpListener ()
 		{
+			var port = NetworkHelpers.FindFreePort ();
 			// listen with a new listener (IPv4 is the default)
-			TcpListener inListener = new TcpListener (8766);
+			TcpListener inListener = new TcpListener (port);
 			inListener.Start();
 			
 
@@ -37,7 +40,7 @@ namespace MonoTests.System.Net.Sockets
 					/// Only keep IPv4 addresses, our Server is in IPv4 only mode.
 					outSock = new Socket (address.AddressFamily, SocketType.Stream,
 						ProtocolType.IP);
-					IPEndPoint remote = new IPEndPoint (address, 8766);
+					IPEndPoint remote = new IPEndPoint (address, port);
 					outSock.Connect (remote);
 					break;
 				}
@@ -106,7 +109,7 @@ namespace MonoTests.System.Net.Sockets
 		class MyListener : TcpListener
 		{
 			public MyListener ()
-				: base (IPAddress.Loopback, 5000)
+				: base (IPAddress.Loopback, NetworkHelpers.FindFreePort ())
 			{
 			}
 
@@ -168,11 +171,11 @@ namespace MonoTests.System.Net.Sockets
 			Assert.IsTrue (sock != listener.GetSocket (), "#08");
 		}
 
-#if NET_2_0
 		[Test]
 		public void StartListenMoreThan5 ()
 		{
-			TcpListener listen = new TcpListener (IPAddress.Loopback, 1234);
+			var port = NetworkHelpers.FindFreePort ();
+			TcpListener listen = new TcpListener (IPAddress.Loopback, port);
 
 			listen.Start (6);
 			listen.Stop ();
@@ -189,6 +192,5 @@ namespace MonoTests.System.Net.Sockets
 			listen.Start (65536);
 			listen.Stop ();
 		}
-#endif
 	}
 }

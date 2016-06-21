@@ -48,13 +48,13 @@ class GFoo3<T> {
 
 // FIXME: Add mixed ref/noref tests, i.e. Dictionary<string, int>
 
-#if MOBILE
+#if __MOBILE__
 public class GSharedTests
 #else
 public class Tests
 #endif
 {
-#if !MOBILE
+#if !__MOBILE__
 	public static int Main (String[] args) {
 		return TestDriver.RunTests (typeof (Tests), args);
 	}
@@ -464,6 +464,21 @@ public class Tests
 		return 0;
 	}
 
+	class DelClass {
+		[MethodImplAttribute (MethodImplOptions.NoInlining)]
+		public static T return_t<T> (T t) {
+			return t;
+		}
+	}
+
+	public static int test_0_gsharedvt_in_delegates_reflection () {
+		var m = typeof(DelClass).GetMethod ("return_t").MakeGenericMethod (new Type [] { typeof (int) });
+		Func<int, int> f = (Func<int, int>)Delegate.CreateDelegate (typeof (Func<int,int>), null, m, false);
+		if (f (42) != 42)
+			return 1;
+		return 0;
+	}
+
 	[MethodImplAttribute (MethodImplOptions.NoInlining)]
 	static T return2_t<T> (T t) {
 		return return_t (t);
@@ -717,8 +732,29 @@ public class Tests
 	}
 
 	public static int test_0_gsharedvt_ginstvt_constructed_arg () {
+		{
+			// AOT: Force a instantiation of use_kvp<long>
+			long a = 1;
+			var t = make_kvp (a, a);
+			var z = use_kvp (t);
+		}
+
 		IFaceKVP c = new ClassKVP ();
 		if (c.do_kvp<long> (1) != 1)
+			return 1;
+		return 0;
+	}
+
+	public static int test_0_gsharedvt_ginstvt_constructed_arg_float () {
+		{
+			// AOT: Force a instantiation of use_kvp<double>
+			double a = 1;
+			var t = make_kvp (a, a);
+			var z = use_kvp (t);
+		}
+
+		IFaceKVP c = new ClassKVP ();
+		if (c.do_kvp<double> (1) != 1)
 			return 1;
 		return 0;
 	}
@@ -1048,6 +1084,11 @@ public class Tests
 		public Type gettype<T, T2>(T t, T2 t2) {
 			return t.GetType ();
 		}
+
+		[MethodImplAttribute (MethodImplOptions.NoInlining)]
+		public Type gettype2<T>(T t) {
+			return t.GetType ();
+		}
 	}
 
 	public static int test_0_constrained_gettype () {
@@ -1056,6 +1097,10 @@ public class Tests
 			return 1;
 		if (c.gettype<string, int> ("A", 1) != typeof (string))
 			return 2;
+		/* Partial sharing */
+		var c2 = new CGetType ();
+		if (c2.gettype2<long> (1) != typeof (long))
+			return 3;
 		return 0;
 	}
 
@@ -1291,12 +1336,19 @@ public class Tests
 
 	interface IFaceBox {
 		object box<T> (T t);
+		bool is_null<T> (T t);
 	}
 
 	class ClassBox : IFaceBox {
 		public object box<T> (T t) {
 			object o = t;
 			return o;
+		}
+
+		public bool is_null<T> (T t) {
+			if (!(default(T) == null))
+				return false;
+			return true;
 		}
 	}
 
@@ -1318,6 +1370,15 @@ public class Tests
 		if (c.box<string> (s) != (object)s)
 			return 5;
 		return 0;
+	}
+
+	public static int test_0_nullable_box_brtrue_opt () {
+		IFaceBox c = new ClassBox ();
+
+		if (c.is_null<double?> (null))
+			return 0;
+		else
+			return 1;
 	}
 
 	interface IFaceUnbox2 {
@@ -1575,6 +1636,277 @@ public class Tests
 			return 1;
 		return 0;
 	}
+
+	struct EmptyStruct {
+	}
+
+	public struct BStruct {
+		public int a, b, c, d;
+	}
+
+	interface IFoo3<T> {
+		int Bytes (T t, int dummy1, int a2, int a3, int a4, int a5, int a6, int a7, int dummy8,
+				   byte b1, byte b2, byte b3, byte b4, byte b5, byte b6, byte b7, byte b8);
+		int SBytes (T t, int dummy1, int a2, int a3, int a4, int a5, int a6, int a7, int dummy8,
+					sbyte b1, sbyte b2, sbyte b3, sbyte b4);
+		int Shorts (T t, int dummy1, int a2, int a3, int a4, int a5, int a6, int a7, int dummy8,
+					short b1, short b2, short b3, short b4);
+		int UShorts (T t, int dummy1, int a2, int a3, int a4, int a5, int a6, int a7, int dummy8,
+					ushort b1, ushort b2, ushort b3, ushort b4);
+		int Ints (T t, int dummy1, int a2, int a3, int a4, int a5, int a6, int a7, int dummy8,
+				  int i1, int i2, int i3, int i4);
+		int UInts (T t, int dummy1, int a2, int a3, int a4, int a5, int a6, int a7, int dummy8,
+				   uint i1, uint i2, uint i3, uint i4);
+		int Structs (T t, int dummy1, int a2, int a3, int a4, int a5, int a6, int a7, int dummy8,
+					 BStruct s);
+	}
+
+	class Foo3<T> : IFoo3<T> {
+		public int Bytes (T t, int dummy1, int a2, int a3, int a4, int a5, int a6, int a7, int dummy8,
+						  byte b1, byte b2, byte b3, byte b4, byte b5, byte b6, byte b7, byte b8) {
+			return b1 + b2 + b3 + b4 + b5 + b6 + b7 + b8;
+		}
+		public int SBytes (T t, int dummy1, int a2, int a3, int a4, int a5, int a6, int a7, int dummy8,
+						  sbyte b1, sbyte b2, sbyte b3, sbyte b4) {
+			return b1 + b2 + b3 + b4;
+		}
+		public int Shorts (T t, int dummy1, int a2, int a3, int a4, int a5, int a6, int a7, int dummy8,
+						   short b1, short b2, short b3, short b4) {
+			return b1 + b2 + b3 + b4;
+		}
+		public int UShorts (T t, int dummy1, int a2, int a3, int a4, int a5, int a6, int a7, int dummy8,
+							ushort b1, ushort b2, ushort b3, ushort b4) {
+			return b1 + b2 + b3 + b4;
+		}
+		public int Ints (T t, int a1, int a2, int a3, int a4, int a5, int a6, int a7, int a8,
+						   int i1, int i2, int i3, int i4) {
+			return i1 + i2 + i3 + i4;
+		}
+		public int UInts (T t, int a1, int a2, int a3, int a4, int a5, int a6, int a7, int a8,
+						  uint i1, uint i2, uint i3, uint i4) {
+			return (int)(i1 + i2 + i3 + i4);
+		}
+		public int Structs (T t, int dummy1, int a2, int a3, int a4, int a5, int a6, int a7, int dummy8,
+							BStruct s) {
+			return s.a + s.b + s.c + s.d;
+		}
+	}
+
+	// Passing small normal arguments on the stack
+	public static int test_0_arm64_small_stack_args () {
+		IFoo3<EmptyStruct> o = (IFoo3<EmptyStruct>)Activator.CreateInstance (typeof (Foo3<>).MakeGenericType (new Type [] { typeof (EmptyStruct) }));
+		int res = o.Bytes (new EmptyStruct (), 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
+		if (res != 36)
+			return 1;
+		int res2 = o.SBytes (new EmptyStruct (), 1, 2, 3, 4, 5, 6, 7, 8, -1, -2, -3, -4);
+		if (res2 != -10)
+			return 2;
+		int res3 = o.Shorts (new EmptyStruct (), 1, 2, 3, 4, 5, 6, 7, 8, -1, -2, -3, -4);
+		if (res3 != -10)
+			return 3;
+		int res4 = o.UShorts (new EmptyStruct (), 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4);
+		if (res4 != 10)
+			return 4;
+		int res5 = o.Ints (new EmptyStruct (), 1, 2, 3, 4, 5, 6, 7, 8, -1, -2, -3, -4);
+		if (res5 != -10)
+			return 5;
+		int res6 = o.UInts (new EmptyStruct (), 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4);
+		if (res6 != 10)
+			return 6;
+		return 0;
+	}
+
+	interface ISmallArg {
+		T foo<T> (string s1, string s2, string s3, string s4, string s5, string s6, string s7, string s8,
+				  string s9, string s10, string s11, string s12, string s13, T t);
+	}
+
+	class SmallArgClass : ISmallArg {
+			public T foo<T> (string s1, string s2, string s3, string s4, string s5, string s6, string s7, string s8,
+							 string s9, string s10, string s11, string s12, string s13, T t) {
+				return t;
+			}
+		}
+
+	public static int test_1_small_gsharedvt_stack_arg_ios () {
+		ISmallArg o = new SmallArgClass ();
+		return o.foo<int> ("", "", "", "", "", "", "", "", "", "", "", "", "", 1);
+	}
+
+	// Passing vtype normal arguments on the stack
+	public static int test_0_arm64_vtype_stack_args () {
+		IFoo3<EmptyStruct> o = (IFoo3<EmptyStruct>)Activator.CreateInstance (typeof (Foo3<>).MakeGenericType (new Type [] { typeof (EmptyStruct) }));
+		int res = o.Structs (new EmptyStruct (), 1, 2, 3, 4, 5, 6, 7, 8, new BStruct () { a = 1, b = 2, c = 3, d = 4 });
+		if (res != 10)
+			return 1;
+		return 0;
+	}
+
+	interface IFoo4<T> {
+		T Get(T[,] arr, T t);
+	}
+
+	class Foo4<T> : IFoo4<T> {
+		public T Get(T[,] arr, T t) {
+			arr [1, 1] = t;
+			return arr [1, 1];
+		}
+	}
+
+	struct AStruct {
+		public int a, b;
+	}
+
+	public static int test_0_multi_dim_arrays_2 () {
+		IFoo4<int> foo = new Foo4<int> ();
+		var arr = new int [10, 10];
+		int res = foo.Get (arr, 10);
+		if (res != 10)
+			return 1;
+
+		IFoo4<AStruct> foo2 = new Foo4<AStruct> ();
+		var arr2 = new AStruct [10, 10];
+		var res2 = foo2.Get (arr2, new AStruct () { a = 1, b = 2 });
+		if (res2.a != 1 || res2.b != 2)
+			return 2;
+		return 0;
+	}
+
+	public interface IFaceTest {
+		int iface_method ();
+	}
+
+	public interface IFaceConstrainedIFace {
+		int foo<T, T2> (ref T val) where T: IFaceTest;
+	}
+
+	class ConstrainedIFace : IFaceConstrainedIFace {
+		public int foo<T, T2> (ref T val) where T: IFaceTest {
+			return val.iface_method ();
+		}
+	}
+
+	class ClassTest : IFaceTest {
+		public int iface_method () {
+			return 42;
+		}
+	}
+
+	// Test constrained calls on an interface made from gsharedvt methods
+	public static int test_42_gsharedvt_constrained_iface () {
+		IFaceConstrainedIFace obj = new ConstrainedIFace ();
+		IFaceTest t = new ClassTest ();
+		return obj.foo<IFaceTest, int> (ref t);
+	}
+
+	// Sign extension tests
+	// 0x55   == 85    == 01010101
+	// 0xAA   == 170   == 10101010
+	// 0x5555 == 21845 == 0101010101010101
+	// 0xAAAA == 43690 == 1010101010101010
+	// 0x55555555 == 1431655765
+	// 0xAAAAAAAA == 2863311530
+	// 0x5555555555555555 == 6148914691236517205
+	// 0xAAAAAAAAAAAAAAAA == 12297829382473034410
+
+	public interface SEFace<T> {
+		T Copy (int a, int b, int c, int d, T t);
+	}
+
+	class SEClass<T> : SEFace<T> {
+		public T Copy (int a, int b, int c, int d, T t) {
+			return t;
+		}
+	}
+
+	// Test extension
+	static int test_20_signextension_sbyte () {
+		Type t = typeof (sbyte);
+		object o = Activator.CreateInstance (typeof (SEClass<>).MakeGenericType (new Type[] { t }));
+		var i = (SEFace<sbyte>)o;
+
+		long zz = i.Copy (1,2,3,4,(sbyte)(-0x55));
+
+		bool success = zz == -0x55;
+		return success ? 20 : 1;
+	}
+
+	static int test_20_signextension_byte () {
+		Type t = typeof (byte);
+		object o = Activator.CreateInstance (typeof (SEClass<>).MakeGenericType (new Type[] { t }));
+		var i = (SEFace<byte>)o;
+
+		ulong zz = i.Copy (1,2,3,4,(byte)(0xAA));
+
+		bool success = zz == 0xAA;
+		return success ? 20 : 1;
+	}
+
+	static int test_20_signextension_short () {
+		Type t = typeof (short);
+		object o = Activator.CreateInstance (typeof (SEClass<>).MakeGenericType (new Type[] { t }));
+		var i = (SEFace<short>)o;
+
+		long zz = i.Copy (1,2,3,4,(short)(-0x5555));
+
+		bool success = zz == -0x5555;
+		return success ? 20 : 1;
+	}
+
+	static int test_20_signextension_ushort () {
+		Type t = typeof (ushort);
+		object o = Activator.CreateInstance (typeof (SEClass<>).MakeGenericType (new Type[] { t }));
+		var i = (SEFace<ushort>)o;
+
+		ulong zz = i.Copy (1,2,3,4,(ushort)(0xAAAA));
+
+		bool success = zz == 0xAAAA;
+		return success ? 20 : 1;
+	}
+
+	static int test_20_signextension_int () {
+		Type t = typeof (int);
+		object o = Activator.CreateInstance (typeof (SEClass<>).MakeGenericType (new Type[] { t }));
+		var i = (SEFace<int>)o;
+
+		long zz = i.Copy (1,2,3,4,(int)(-0x55555555));
+
+		bool success = zz == -0x55555555;
+		return success ? 20 : 1;
+	}
+
+	static int test_20_signextension_uint () {
+		Type t = typeof (uint);
+		object o = Activator.CreateInstance (typeof (SEClass<>).MakeGenericType (new Type[] { t }));
+		var i = (SEFace<uint>)o;
+
+		ulong zz = i.Copy (1,2,3,4,(uint)(0xAAAAAAAA));
+
+		bool success = zz == 0xAAAAAAAA;
+		return success ? 20 : 1;
+	}
+
+	static int test_20_signextension_long () {
+		Type t = typeof (long);
+		object o = Activator.CreateInstance (typeof (SEClass<>).MakeGenericType (new Type[] { t }));
+		var i = (SEFace<long>)o;
+
+		long zz = i.Copy (1,2,3,4,(long)(-0x5555555555555555));
+
+		bool success = zz == -0x5555555555555555;
+		return success ? 20 : 1;
+	}
+
+	static int test_20_signextension_ulong () {
+		Type t = typeof (ulong);
+		object o = Activator.CreateInstance (typeof (SEClass<>).MakeGenericType (new Type[] { t }));
+		var i = (SEFace<ulong>)o;
+
+		ulong zz = i.Copy (1,2,3,4,(ulong)(0xAAAAAAAAAAAAAAAA));
+
+		bool success = zz == 0xAAAAAAAAAAAAAAAA;
+		return success ? 20 : 1;
+	}
 }
 
 // #13191
@@ -1592,7 +1924,7 @@ public class MobileServiceCollection<TTable, TCol>
 	}
 }
 
-#if !MOBILE
+#if !__MOBILE__
 public class GSharedTests : Tests {
 }
 #endif

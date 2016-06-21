@@ -79,7 +79,9 @@ namespace System.Web.Handlers
 					if (!hashAlg.CanReuseTransform) {
 						canReuseHashAlg = false;
 						hashAlg = null;
+						return null;
 					}
+					hashAlg.Key = MachineKeySectionUtils.GetValidationKey (mks);
 				}
 
 				if (hashAlg != null)
@@ -272,9 +274,7 @@ namespace System.Web.Handlers
 				debug = resourceName.EndsWith (".debug.js", StringComparison.OrdinalIgnoreCase);
 				string dbgTail = debug ? "d" : String.Empty;
 				lookupKey = resourceNameHash + (notifyScriptLoaded ? "t" : "f") + dbgTail;
-#if NET_3_5
 				CheckIfResourceIsCompositeScript (resourceName, ref includeTimeStamp);
-#endif
 #else
 				lookupKey = resourceNameHash;
 #endif

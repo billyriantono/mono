@@ -42,6 +42,17 @@ public class DebuggerTests
 	public static string runtime = Environment.GetEnvironmentVariable ("DBG_RUNTIME");
 	public static string agent_args = Environment.GetEnvironmentVariable ("DBG_AGENT_ARGS");
 
+	// Not currently used, but can be useful when debugging individual tests.
+	void StackTraceDump (Event e)
+	{
+		int i = 0;
+		foreach (var frame in e.Thread.GetFrames ())
+		{
+			i++;
+			Console.WriteLine ("Frame " + i + ", " + frame.Method.Name);
+		}
+	}
+
 	Event GetNextEvent () {
 		var es = vm.GetNextEventSet ();
 		Assert.AreEqual (1, es.Events.Length);
@@ -122,6 +133,140 @@ public class DebuggerTests
 		Assert.AreEqual (m.Name, (e as BreakpointEvent).Method.Name);
 
 		return (e as BreakpointEvent);
+	}
+
+	class ReusableBreakpoint {
+		DebuggerTests owner;
+		public string method_name;
+		public BreakpointEventRequest req;
+		public BreakpointEvent lastEvent = null;
+		public ReusableBreakpoint (DebuggerTests owner, string method_name)
+		{
+			this.owner = owner;
+			this.method_name = method_name;
+			MethodMirror m = owner.entry_point.DeclaringType.GetMethod (method_name);
+			Assert.IsNotNull (m);
+			req = owner.vm.SetBreakpoint (m, m.ILOffsets [0]);
+		}
+
+		public void Continue ()
+		{
+			bool survived = false;
+
+			try {
+				Event e = null;
+
+				while (true) {
+					owner.vm.Resume ();
+					e = owner.GetNextEvent ();
+					if (e is BreakpointEvent)
+						break;
+				}
+
+				Assert.IsInstanceOfType (typeof (BreakpointEvent), e);
+				Assert.AreEqual (method_name, (e as BreakpointEvent).Method.Name);
+
+				lastEvent = e as BreakpointEvent;
+
+				survived = true;
+			} finally {
+				if (!survived) { // Ensure cleanup if we triggered an assert
+					Disable ();
+				}
+			}
+		}
+
+		public void Disable ()
+		{
+			req.Disable ();
+		}
+	}
+
+	/* One of the tests executes a complex tree of recursive functions.
+	   The only good way to specify how its behavior should appear from this side
+	   is to just run the function tree once over here and record what it does. */
+	public struct RecursiveChaoticPoint
+	{
+		public bool breakpoint;
+		public string name;
+		public int depth;
+
+		public RecursiveChaoticPoint (bool breakpoint, string name, int depth)
+		{
+			this.breakpoint = breakpoint;
+			this.name = name;
+			this.depth = depth;
+		}
+	}
+
+	// The breakpoint is placed here in dtest-app.cs
+	public static void ss_recursive_chaotic_trap (int n, List<RecursiveChaoticPoint> trace, ref bool didLast, ref bool didAny)
+	{
+		// Depth is calculated as:
+		// Main + single_stepping + ss_recursive_chaotic + (n is 5 at outermost frame and 0 at innermost frame) + ss_recursive_chaotic_trap
+		trace.Add (new RecursiveChaoticPoint (true, "ss_recursive_chaotic_trap", 5 - n + 5));
+		didLast = true;
+	}
+
+	public static void ss_recursive_chaotic_at (string at, int n, List<RecursiveChaoticPoint> trace, ref bool didLast, ref bool didAny)
+	{
+		// This will be called after every return from a function. The other function will return whether "step out" is currently active, and it will be passed in here as didLast.
+		if (didLast) {
+			// Depth is calculated as:
+			// Main + single_stepping + ss_recursive_chaotic + (n is 5 at outermost frame and 0 at innermost frame)
+			trace.Add (new RecursiveChaoticPoint (false, "ss_recursive_chaotic_" + at, 5 - n + 4));
+			didAny = true;
+			didLast = false;
+		}
+	}
+
+	public static bool ss_recursive_chaotic_fizz (int n, List<RecursiveChaoticPoint> trace)
+	{
+		bool didLast = false, didAny = false;
+		if (n > 0) {
+			int next = n - 1;
+			didLast = ss_recursive_chaotic_buzz (next, trace);
+			ss_recursive_chaotic_at ("fizz", n, trace, ref didLast, ref didAny);
+			didLast = ss_recursive_chaotic_fizzbuzz (next, trace);
+			ss_recursive_chaotic_at ("fizz", n, trace, ref didLast, ref didAny);
+		} else {
+			ss_recursive_chaotic_trap (n, trace, ref didLast, ref didAny);
+			ss_recursive_chaotic_at ("fizz", n, trace, ref didLast, ref didAny);
+		}
+		return didAny;
+	}
+
+	public static bool ss_recursive_chaotic_buzz (int n, List<RecursiveChaoticPoint> trace)
+	{
+		bool didLast = false, didAny = false;
+		if (n > 0) {
+			int next = n - 1;
+			didLast = ss_recursive_chaotic_fizz (next, trace);
+			ss_recursive_chaotic_at ("buzz", n, trace, ref didLast, ref didAny);
+			didLast = ss_recursive_chaotic_fizzbuzz (next, trace);
+			ss_recursive_chaotic_at ("buzz", n, trace, ref didLast, ref didAny);
+		}
+		return didAny;
+	}
+
+	public static bool ss_recursive_chaotic_fizzbuzz (int n, List<RecursiveChaoticPoint> trace)
+	{
+		bool didLast = false, didAny = false;
+		if (n > 0) {
+			int next = n - 1;
+			didLast = ss_recursive_chaotic_fizz (next, trace);
+			ss_recursive_chaotic_at ("fizzbuzz", n, trace, ref didLast, ref didAny);
+			didLast = ss_recursive_chaotic_buzz (next, trace);
+			ss_recursive_chaotic_at ("fizzbuzz", n, trace, ref didLast, ref didAny);
+			didLast = ss_recursive_chaotic_fizzbuzz (next, trace);
+			ss_recursive_chaotic_at ("fizzbuzz", n, trace, ref didLast, ref didAny);
+		}
+		return didAny;
+	}
+
+	public static void trace_ss_recursive_chaotic (List<RecursiveChaoticPoint> trace)
+	{
+		ss_recursive_chaotic_fizz (5, trace);
 	}
 
 	Event single_step (ThreadMirror t) {
@@ -372,15 +517,78 @@ public class DebuggerTests
 		Assert.AreEqual (m2.Name, (e as BreakpointEvent).Method.Name);
 	}
 
+	// Assert we have stepped to a location
 	void assert_location (Event e, string method) {
 		Assert.IsTrue (e is StepEvent);
 		Assert.AreEqual (method, (e as StepEvent).Method.Name);
+	}
+
+	// Assert we have breakpointed at a location
+	void assert_location_at_breakpoint (Event e, string method) {
+		Assert.IsTrue (e is BreakpointEvent);
+		Assert.AreEqual (method, (e as BreakpointEvent).Method.Name);
+	}
+
+	// Assert we have stepped to or breakpointed at a location
+	void assert_location_allow_breakpoint (Event e, string method) {
+		if (e is StepEvent)
+			Assert.AreEqual (method, (e as StepEvent).Method.Name);
+		else if (e is BreakpointEvent)
+			Assert.AreEqual (method, (e as BreakpointEvent).Method.Name);
+		else
+			Assert.Fail ("Neither step nor breakpoint event");
 	}
 
 	StepEventRequest create_step (Event e) {
 		var req = vm.CreateStepRequest (e.Thread);
 		step_req = req;
 		return req;
+	}
+
+	[Test]
+	public void ClassLocalReflection () {
+		MethodMirror m = entry_point.DeclaringType.Assembly.GetType ("LocalReflectClass").GetMethod ("RunMe");
+
+		Assert.IsNotNull (m);
+		//Console.WriteLine ("X: " + name + " " + m.ILOffsets.Count + " " + m.Locations.Count);
+		var offset = -1;
+		int method_base_linum = m.Locations [0].LineNumber;
+		foreach (var location in m.Locations)
+			if (location.LineNumber == method_base_linum + 2) {
+				offset = location.ILOffset;
+				break;
+			}
+
+		var req = vm.SetBreakpoint (m, offset);
+
+		Event e = null;
+
+		while (true) {
+			vm.Resume ();
+			e = GetNextEvent ();
+			if (e is BreakpointEvent)
+				break;
+		}
+
+		req.Disable ();
+
+		Assert.IsInstanceOfType (typeof (BreakpointEvent), e);
+		Assert.AreEqual (m.Name, (e as BreakpointEvent).Method.Name);
+
+		e = single_step (e.Thread);
+
+		var frame = e.Thread.GetFrames ()[0];
+		Value variable = frame.GetValue (frame.Method.GetLocal ("reflectMe"));
+
+		ObjectMirror thisObj = (ObjectMirror)variable;
+		TypeMirror thisType = thisObj.Type;
+		FieldInfoMirror thisFi = null;
+		foreach (var fi in thisType.GetFields ())
+			if (fi.Name == "someField")
+				thisFi = fi;
+
+		var gotVal = thisObj.GetValue (thisFi);
+		// If we got this far, we're good.
 	}
 
 	[Test]
@@ -418,6 +626,10 @@ public class DebuggerTests
 
 		// Step back into single_stepping
 		e = step_out ();
+		assert_location (e, "single_stepping");
+
+		// Step into next line
+		e = step_into ();
 		assert_location (e, "single_stepping");
 
 		// Step into ss3_2 ()
@@ -522,7 +734,11 @@ public class DebuggerTests
 		e = step_over ();
 		assert_location (e, "ss_nested");
 		e = step_into ();
-		assert_location (e, "ss_nested_3");
+		assert_location (e, "ss_nested_1");
+		e = step_into ();
+		assert_location (e, "ss_nested_1");
+		e = step_into ();
+		assert_location (e, "ss_nested");
 		req.Disable ();
 
 		// Check DebuggerStepThrough support
@@ -569,6 +785,95 @@ public class DebuggerTests
 		assert_location (e, "ss_recursive");
 		AssertValue (1, f.GetValue (f.Method.GetLocal ("n")));
 		req.Disable ();
+
+		// Check that step-over stops correctly when inner frames with recursive functions contain breakpoints
+		e = run_until ("ss_recursive2");
+		ReusableBreakpoint breakpoint = new ReusableBreakpoint (this, "ss_recursive2_trap");
+		try {
+			breakpoint.Continue ();
+			e = breakpoint.lastEvent;
+			req = create_step (e);
+			for (int c = 1; c <= 4; c++) {
+				// The first five times we try to step over this function, the breakpoint will stop us
+				assert_location_at_breakpoint (e, "ss_recursive2_trap");
+
+				req.Disable ();
+				req = create_step (e);
+				req.Size = StepSize.Line;
+
+				e = step_out ();
+				assert_location (e, "ss_recursive2");
+
+				// Stack should consist of Main + single_stepping + (1 ss_recursive2 frame per loop iteration)
+				Assert.AreEqual (c+2, e.Thread.GetFrames ().Length);
+				e = step_over_or_breakpoint ();
+			}
+			// At this point we should have escaped the breakpoints and this will be a normal step stop
+			assert_location (e, "ss_recursive2");
+			Assert.AreEqual (6, e.Thread.GetFrames ().Length);
+		} finally {
+			req.Disable ();
+			breakpoint.Disable ();
+		}
+
+		// Check that step-out stops correctly when inner frames with recursive functions contain breakpoints
+		e = run_until ("ss_recursive2");
+		breakpoint = new ReusableBreakpoint (this, "ss_recursive2_trap");
+		try {
+			breakpoint.Continue ();
+			e = breakpoint.lastEvent;
+			req = create_step (e);
+			for (int c = 1; c <= 4; c++) {
+				// The first five times we try to step over this function, the breakpoint will stop us
+				assert_location_at_breakpoint (e, "ss_recursive2_trap");
+
+				req.Disable ();
+				req = create_step (e);
+				req.Size = StepSize.Line;
+
+				e = step_out ();
+				assert_location (e, "ss_recursive2");
+
+				// Stack should consist of Main + single_stepping + (1 ss_recursive2 frame per loop iteration)
+				Assert.AreEqual (c+2, e.Thread.GetFrames ().Length);
+				e = step_out_or_breakpoint ();
+			}
+			for (int c = 3; c >= 1; c--) {
+				assert_location (e, "ss_recursive2");
+				Assert.AreEqual (c + 2, e.Thread.GetFrames ().Length);
+
+				e = step_out ();
+			}
+		} finally {
+			req.Disable ();
+			breakpoint.Disable ();
+		}
+
+		// Test step out with a really complicated call tree
+		List<RecursiveChaoticPoint> trace = new List<RecursiveChaoticPoint>();
+		trace_ss_recursive_chaotic (trace);
+		e = run_until ("ss_recursive_chaotic");
+		try {
+			breakpoint = new ReusableBreakpoint (this, "ss_recursive_chaotic_trap");
+			breakpoint.Continue ();
+			e = breakpoint.lastEvent;
+			foreach (RecursiveChaoticPoint point in trace)
+			{
+				if (point.breakpoint)
+					assert_location_at_breakpoint (e, point.name);
+				else
+					assert_location (e, point.name);
+				Assert.AreEqual (point.depth, e.Thread.GetFrames ().Length);
+
+				req.Disable ();
+				req = create_step (e);
+				req.Size = StepSize.Line;
+				e = step_out_or_breakpoint ();
+			}
+		} finally {
+			req.Disable ();
+			breakpoint.Disable ();
+		}
 
 		// Check that single stepping doesn't clobber fp values
 		e = run_until ("ss_fp_clobber");
@@ -1134,6 +1439,10 @@ public class DebuggerTests
 		Assert.IsTrue (t.IsEnum);
 		Assert.AreEqual ("Int32", t.EnumUnderlyingType.Name);
 
+		// TypedReferences
+		t = frame.Method.GetParameters ()[11].ParameterType;
+		Assert.AreEqual ("TypedReference", t.Name);
+
 		// properties
 		t = frame.Method.GetParameters ()[7].ParameterType;
 
@@ -1366,7 +1675,7 @@ public class DebuggerTests
 
 		TypeMirror t = o.Type;
 
-		Assert.AreEqual ("MonoType", t.GetTypeObject ().Type.Name);
+		Assert.AreEqual ("RuntimeType", t.GetTypeObject ().Type.Name);
 	}
 
 	[Test]
@@ -1424,6 +1733,10 @@ public class DebuggerTests
 		s = obj as StructMirror;
 		AssertValue (2, s ["i"]);
 		AssertValue ("S2", s ["s"]);
+
+		// typedbyref
+		var typedref = frame.GetArgument (2) as StructMirror;
+		Assert.IsTrue (typedref is StructMirror);
 
 		// Argument checking
 		s = frame.GetArgument (0) as StructMirror;
@@ -1503,8 +1816,8 @@ public class DebuggerTests
 		StackFrame frame = e.Thread.GetFrames () [0];
 
 		var locals = frame.Method.GetLocals ();
-		Assert.AreEqual (8, locals.Length);
-		for (int i = 0; i < 8; ++i) {
+		Assert.AreEqual (9, locals.Length);
+		for (int i = 0; i < 9; ++i) {
 			if (locals [i].Name == "args") {
 				Assert.IsTrue (locals [i].IsArg);
 				Assert.AreEqual ("String[]", locals [i].Type.Name);
@@ -1528,6 +1841,7 @@ public class DebuggerTests
 				Assert.IsTrue (locals [i].IsArg);
 				Assert.AreEqual ("String", locals [i].Type.Name);
 			} else if (locals [i].Name == "astruct") {
+			} else if (locals [i].Name == "alist") {
 			} else {
 				Assert.Fail ();
 			}
@@ -1560,6 +1874,27 @@ public class DebuggerTests
 		step_req.Depth = StepDepth.Out;
 		step_req.Enable ();
 		return step_once ();
+	}
+
+	Event step_once_or_breakpoint () {
+		vm.Resume ();
+		var e = GetNextEvent ();
+		Assert.IsTrue (e is StepEvent || e is BreakpointEvent);
+		return e;
+	}
+
+	Event step_over_or_breakpoint () {
+		step_req.Disable ();
+		step_req.Depth = StepDepth.Over;
+		step_req.Enable ();
+		return step_once_or_breakpoint ();
+	}
+
+	Event step_out_or_breakpoint () {
+		step_req.Disable ();
+		step_req.Depth = StepDepth.Out;
+		step_req.Enable ();
+		return step_once_or_breakpoint ();
 	}
 
 	[Test]
@@ -1612,6 +1947,8 @@ public class DebuggerTests
 				AssertValue ("AB", vals [i]);
 			if (locals [i].Name == "t")
 				AssertValue ("ABC", vals [i]);
+			if (locals [i].Name == "alist") {
+			}
 		}
 
 		// Argument checking
@@ -2142,6 +2479,11 @@ public class DebuggerTests
 		v = this_obj.InvokeMethod (e.Thread, m, null, InvokeOptions.Virtual);
 		AssertValue ("V2", v);
 
+		// virtual call on static method
+		m = t.GetMethod ("invoke_static_pass_ref");
+		v = t.InvokeMethod (e.Thread, m, new Value [] { vm.RootDomain.CreateString ("ABC") }, InvokeOptions.Virtual);
+		AssertValue ("ABC", v);
+
 #if NET_4_5
 		// instance
 		m = t.GetMethod ("invoke_pass_ref");
@@ -2216,6 +2558,12 @@ public class DebuggerTests
 		v = s.InvokeMethod (e.Thread, m, null);
 		AssertValue (42, v);
 
+		// Pass boxed struct as this
+		var boxed_this = t.NewInstance () as ObjectMirror;
+		m = t.GetMethod ("invoke_return_int");
+		v = boxed_this.InvokeMethod (e.Thread, m, null);
+		AssertValue (0, v);
+
 		// Pass struct as this, receive intptr
 		m = t.GetMethod ("invoke_return_intptr");
 		v = s.InvokeMethod (e.Thread, m, null);
@@ -2233,6 +2581,13 @@ public class DebuggerTests
 		v = s.InvokeMethod (e.Thread, m, null);
 		AssertValue (42, v);
 
+		// .ctor
+		s = frame.GetArgument (1) as StructMirror;
+		t = s.Type;
+		m = t.GetMethods ().First (method => method.Name == ".ctor" && method.GetParameters ().Length == 1);
+		v = t.InvokeMethod (e.Thread, m, new Value [] { vm.CreateValue (1) });
+		AssertValue (1, (v as StructMirror)["i"]);
+
 #if NET_4_5
 		// Invoke a method which changes state
 		s = frame.GetArgument (1) as StructMirror;
@@ -2249,6 +2604,17 @@ public class DebuggerTests
 		task = s.InvokeMethodAsyncWithResult (e.Thread, m, null);
 		out_this = task.Result.OutThis as StructMirror;
 		Assert.AreEqual (null, out_this);
+
+		// interface method
+		var cl1 = frame.Method.DeclaringType.Assembly.GetType ("ITest2");
+		m = cl1.GetMethod ("invoke_iface");
+		v = s.InvokeMethod (e.Thread, m, null);
+		AssertValue (42, v);
+
+		// virtual method
+		m = vm.RootDomain.Corlib.GetType ("System.Object").GetMethod ("ToString");
+		v = s.InvokeMethod (e.Thread, m, null, InvokeOptions.Virtual);
+		AssertValue ("42", v);
 #endif
 	}
 
@@ -2410,6 +2776,28 @@ public class DebuggerTests
 		var res = this_obj.EndInvokeMethod (ar);
 		lock (invoke_results)
 			invoke_results.Add (res);
+	}
+
+	[Test]
+	public void InvokeAbort () {
+		vm.Detach ();
+
+		Start (new string [] { "dtest-app.exe", "invoke-abort" });
+
+		Event e = run_until ("invoke_abort");
+
+		StackFrame f = e.Thread.GetFrames ()[0];
+
+		var obj = f.GetThis () as ObjectMirror;
+		var t = obj.Type;
+		var m = t.GetMethod ("invoke_abort_2");
+		// Invoke multiple times to check that the subsequent invokes are aborted too
+		var res = (IInvokeAsyncResult)obj.BeginInvokeMultiple (e.Thread, new MethodMirror[] { m, m, m, m }, null, InvokeOptions.None, delegate { }, null);
+		Thread.Sleep (500);
+		res.Abort ();
+		AssertThrows<CommandException> (delegate {
+				obj.EndInvokeMethod (res);
+			});
 	}
 
 	[Test]
@@ -2822,6 +3210,22 @@ public class DebuggerTests
 	}
 
 	[Test]
+	public void MemberInOtherDomain () {
+		vm.Detach ();
+
+		Start (new string [] { "dtest-app.exe", "domain-test" });
+
+		vm.EnableEvents (EventType.AppDomainCreate, EventType.AppDomainUnload, EventType.AssemblyUnload);
+
+		Event e = run_until ("domains_print_across");
+
+		var frame = e.Thread.GetFrames ()[0];
+		var inOtherDomain = frame.GetArgument (0) as ObjectMirror;
+		var crossDomainField = (ObjectMirror) inOtherDomain.GetValue (inOtherDomain.Type.GetField("printMe"));
+		Assert.AreEqual ("SentinelClass", crossDomainField.Type.Name);
+	}
+
+	[Test]
 	public void Domains () {
 		vm.Detach ();
 
@@ -2912,6 +3316,13 @@ public class DebuggerTests
 		AssertThrows<Exception> (delegate {
 				d_method.DeclaringType.GetValue (d_method.DeclaringType.GetField ("static_i"));
 			});
+
+		// Check that .Domain is accessible for stack frames with native transitions
+		e = run_until ("called_from_invoke");
+		ThreadMirror.NativeTransitions = true;
+		foreach (var f in e.Thread.GetFrames ()) {
+			var dom = f.Domain;
+		}
 	}
 
 	[Test]
@@ -3219,6 +3630,20 @@ public class DebuggerTests
 	}
 
 	[Test]
+	public void String_GetValue () {
+		// Embedded nulls
+		object val;
+
+		// Reuse this test
+		var e = run_until ("arg2");
+
+		var frame = e.Thread.GetFrames () [0];
+
+		val = frame.GetArgument (6);
+		Assert.AreEqual ('\0'.ToString () + "A", (val as StringMirror).Value);
+	}
+
+	[Test]
 	public void String_GetChars () {
 		object val;
 
@@ -3467,12 +3892,15 @@ public class DebuggerTests
 		Assert.AreEqual (ThreadState.WaitSleepJoin, thread.ThreadState, "#6");
 
 		frames = thread.GetFrames ();
-		Assert.AreEqual (4, frames.Length, "#7");
-		Assert.AreEqual ("WaitOne_internal", frames [0].Method.Name, "#8");
-		Assert.AreEqual ("WaitOne", frames [1].Method.Name, "#8.1");
-		Assert.AreEqual ("wait_one", frames [2].Method.Name, "#9");
-		Assert.AreEqual ("Main", frames [3].Method.Name, "#10");
-
+		Assert.AreEqual (8, frames.Length, "#7");
+		Assert.AreEqual ("WaitOne_internal", frames [0].Method.Name, "#8.0");
+		Assert.AreEqual ("WaitOneNative", frames [1].Method.Name, "#8.1");
+		Assert.AreEqual ("InternalWaitOne", frames [2].Method.Name, "#8.2");
+		Assert.AreEqual ("WaitOne", frames [3].Method.Name, "#8.3");
+		Assert.AreEqual ("WaitOne", frames [4].Method.Name, "#8.4");
+		Assert.AreEqual ("WaitOne", frames [5].Method.Name, "#8.5");
+		Assert.AreEqual ("wait_one", frames [6].Method.Name, "#8.6");
+		Assert.AreEqual ("Main", frames [7].Method.Name, "#8.7");
 
 		var frame = frames [0];
 		Assert.IsTrue (frame.IsNativeTransition, "#11.1");
@@ -3481,12 +3909,12 @@ public class DebuggerTests
 			Assert.Fail ("Known limitation - can't get info from m2n frames");
 		} catch (AbsentInformationException) {}
 
-		frame = frames [1];
+		frame = frames [3];
 		Assert.IsFalse (frame.IsNativeTransition, "#12.1");
 		var wait_one_this = frame.GetThis ();
 		Assert.IsNotNull (wait_one_this, "#12.2");
 
-		frame = frames [2];
+		frame = frames [6];
 		var locals = frame.GetVisibleVariables ();
 		Assert.AreEqual (1, locals.Count, "#13.1");
 
@@ -3536,10 +3964,10 @@ public class DebuggerTests
 
 		e.Thread.SetIP (next_loc);
 
-		/* Check that i = 5; j = 5; was skipped */
+		/* Check that i ++; j = 5; was skipped */
 		bevent = run_until ("set_ip_2");
 		var f = bevent.Thread.GetFrames ()[1];
-		AssertValue (1, f.GetValue (f.Method.GetLocal ("i")));
+		AssertValue (2, f.GetValue (f.Method.GetLocal ("i")));
 		AssertValue (0, f.GetValue (f.Method.GetLocal ("j")));
 
 		// Error handling
@@ -3553,6 +3981,30 @@ public class DebuggerTests
 	}
 
 	[Test]
+	public void SetIPSingleStep () {
+		// Check that single stepping after set-ip steps from the new ip
+		var bevent = run_until ("set_ip_1");
+
+		var invalid_loc = bevent.Thread.GetFrames ()[0].Location;
+
+		var req = create_step (bevent);
+		req.Size = StepSize.Line;
+		var e = step_out ();
+		req.Disable ();
+		var frames = e.Thread.GetFrames ();
+		var locs = frames [0].Method.Locations;
+		var prev_loc = locs.First (l => (l.LineNumber == frames [0].Location.LineNumber - 3));
+		AssertValue (2, frames [0].GetValue (frames [0].Method.GetLocal ("i")));
+
+		// Set back the ip to the first i ++; line
+		e.Thread.SetIP (prev_loc);
+
+		e = step_over ();
+		var f = e.Thread.GetFrames ()[0];
+		AssertValue (3, f.GetValue (f.Method.GetLocal ("i")));
+	}
+
+	[Test]
 	public void NewInstanceNoCtor () {
 		var bevent = run_until ("Main");
 
@@ -3560,6 +4012,28 @@ public class DebuggerTests
 		var obj = stype.NewInstance ();
 		Assert.IsTrue (obj is ObjectMirror);
 		Assert.AreEqual ("AStruct", (obj as ObjectMirror).Type.Name);
+	}
+
+	[Test]
+	public void StaticCtorFilterInCctor () {
+		// Check that single stepping when in a cctor only ignores
+		// other cctors, not the current one
+		var bevent = run_until ("step_filters");
+
+		var assembly = entry_point.DeclaringType.Assembly;
+		var type = assembly.GetType ("Tests/ClassWithCctor");
+		var cctor = type.GetMethod (".cctor");
+		vm.SetBreakpoint (cctor, 0);
+
+		vm.Resume ();
+		var e = vm.GetNextEvent ();
+		Assert.IsTrue (e is BreakpointEvent);
+
+		var req = create_step (e);
+		req.Filter = StepFilter.StaticCtor;
+		e = step_into ();
+		// Make sure we are still in the cctor
+		Assert.AreEqual (".cctor", e.Thread.GetFrames ()[0].Location.Method.Name);
 	}
 }
 

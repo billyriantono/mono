@@ -12,9 +12,7 @@
 using NUnit.Framework;
 using System;
 using System.Threading;
-#if NET_2_0
 using Microsoft.Win32.SafeHandles;
-#endif
 
 namespace MonoTests.System.Threading
 {
@@ -32,7 +30,6 @@ namespace MonoTests.System.Threading
 			Assert.IsFalse (evt.WaitOne (1000, false), "#3");
 		}
 
-#if NET_2_0
 		[Test] // bug #81529
 		public void SafeWaitHandle ()
 		{
@@ -93,7 +90,7 @@ namespace MonoTests.System.Threading
 			SafeWaitHandle swh1 = are1.SafeWaitHandle;
 			are1.Handle = (IntPtr) (-1);
 			Assert.IsTrue (swh1 != are1.SafeWaitHandle, "#1");
-			Assert.IsFalse (swh1.IsClosed, "#2");
+			Assert.IsTrue (swh1.IsClosed, "#2"); // After testing on Windows/.NET, IsClosed returns true
 			Assert.IsFalse (swh1.IsInvalid, "#3");
 			Assert.IsFalse (are1.SafeWaitHandle.IsClosed, "#4");
 			Assert.IsTrue (are1.SafeWaitHandle.IsInvalid, "#5");
@@ -115,6 +112,5 @@ namespace MonoTests.System.Threading
 			are1.Close ();
 			swh1.Dispose ();
 		}
-#endif
 	}
 }

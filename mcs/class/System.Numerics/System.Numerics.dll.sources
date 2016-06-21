@@ -1,4 +1,10 @@
 ../../build/common/Consts.cs
+../../build/common/SR.cs
 Assembly/AssemblyInfo.cs
-System.Numerics/Complex.cs
-System.Numerics/BigInteger.cs
+ReferenceSources/Environment.cs
+ReferenceSources/SR.cs
+../referencesource/System.Numerics/System/Numerics/BigInteger.cs
+../referencesource/System.Numerics/System/Numerics/BigIntegerBuilder.cs
+../referencesource/System.Numerics/System/Numerics/BigNumber.cs
+../referencesource/System.Numerics/System/Numerics/Complex.cs
+../referencesource/System.Numerics/System/Numerics/NumericsHelpers.cs

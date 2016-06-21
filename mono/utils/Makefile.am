@@ -1,6 +1,6 @@
 noinst_LTLIBRARIES = libmonoutils.la
 
-AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/mono $(LIBGC_CPPFLAGS) $(GLIB_CFLAGS)
+AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/mono $(LIBGC_CPPFLAGS) $(GLIB_CFLAGS) $(SHARED_CFLAGS)
 
 if ENABLE_DTRACE
 
@@ -15,13 +15,17 @@ monoutils_sources = \
 	mono-md5.c		\
 	mono-sha1.c		\
 	mono-logger.c		\
-	mono-logger-internal.h	\
+	mono-logger-internals.h	\
 	mono-codeman.c		\
 	dlmalloc.h      	\
 	dlmalloc.c      	\
 	mono-counters.c		\
 	mono-compiler.h		\
+	mono-complex.h		\
 	mono-dl.c		\
+	mono-dl-windows.c	\
+	mono-dl-darwin.c	\
+	mono-dl-posix.c		\
 	mono-dl.h		\
 	mono-internal-hash.c	\
 	mono-internal-hash.h	\
@@ -32,9 +36,11 @@ monoutils_sources = \
 	mono-math.c  		\
 	mono-mmap.c  		\
 	mono-mmap.h  		\
-	mono-mmap-internal.h	\
-	mono-mutex.c  		\
-	mono-mutex.h  		\
+	mono-mmap-internals.h	\
+	mono-os-mutex.h		\
+	mono-coop-mutex.h		\
+	mono-once.h		\
+	mono-lazy-init.h		\
 	mono-networkinterfaces.c		\
 	mono-networkinterfaces.h		\
 	mono-proclib.c		\
@@ -43,15 +49,13 @@ monoutils_sources = \
 	mono-string.h		\
 	mono-time.c  		\
 	mono-time.h  		\
-	strtod.h		\
-	strtod.c		\
 	strenc.h		\
 	strenc.c		\
 	mono-uri.c		\
 	mono-poll.c		\
 	mono-path.c		\
-	mono-semaphore.c	\
-	mono-semaphore.h	\
+	mono-os-semaphore.h	\
+	mono-coop-semaphore.h		\
 	mono-sigcontext.h	\
 	mono-stdlib.c 		\
 	mono-property-hash.h 	\
@@ -96,7 +100,10 @@ monoutils_sources = \
 	mono-linked-list-set.c	\
 	mono-linked-list-set.h	\
 	mono-threads.c	\
+	mono-threads-state-machine.c	\
 	mono-threads-posix.c	\
+	mono-threads-posix-signals.c	\
+	mono-threads-posix-signals.h	\
 	mono-threads-mach.c	\
 	mono-threads-mach-helper.c	\
 	mono-threads-windows.c	\
@@ -105,6 +112,12 @@ monoutils_sources = \
 	mono-threads-openbsd.c	\
 	mono-threads-android.c	\
 	mono-threads.h	\
+	mono-threads-api.h	\
+	mono-threads-coop.c	\
+	mono-threads-coop.h	\
+	mono-threads-mach-abort-syscall.c	\
+	mono-threads-posix-abort-syscall.c	\
+	mono-threads-windows-abort-syscall.c	\
 	mono-tls.h	\
 	mono-tls.c	\
 	linux_magic.h	\
@@ -119,7 +132,23 @@ monoutils_sources = \
 	mono-conc-hashtable.h	\
 	mono-conc-hashtable.c	\
 	sha1.h		\
-	sha1.c
+	sha1.c	\
+	json.h	\
+	json.c	\
+	networking.c	\
+	networking-posix.c	\
+	networking-fallback.c	\
+	networking-missing.c	\
+	networking-windows.c	\
+	networking.h	\
+	mono-rand.c	\
+	mono-rand.h \
+	memfuncs.c \
+	memfuncs.h \
+	parse.c \
+	parse.h	\
+	checked-build.c \
+	checked-build.h
 
 arch_sources = 
 
@@ -138,7 +167,7 @@ arch_sources += mach-support-arm.c
 endif
 
 if ARM64
-arch_sources += mach-support-arm.c
+arch_sources += mach-support-arm64.c
 endif
 
 else
@@ -201,4 +230,4 @@ libmonoutilsinclude_HEADERS = 	\
 	mono-dl-fallback.h	\
 	mono-counters.h
 
-EXTRA_DIST = ChangeLog mono-embed.h mono-embed.c
+EXTRA_DIST = mono-embed.h mono-embed.c

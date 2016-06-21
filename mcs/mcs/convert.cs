@@ -715,6 +715,12 @@ namespace Mono.CSharp {
 				return false;
 			}
 
+			var interpolated_string = expr as InterpolatedString;
+			if (interpolated_string != null) {
+				if (target_type == rc.Module.PredefinedTypes.IFormattable.TypeSpec || target_type == rc.Module.PredefinedTypes.FormattableString.TypeSpec)
+					return true;
+			}
+
 			return ImplicitStandardConversionExists (expr, target_type);
 		}
 
@@ -1471,6 +1477,12 @@ namespace Mono.CSharp {
 			//
 			if (expr_type.IsStruct && TypeSpecComparer.IsEqual (expr_type, target_type))
 				return expr_type == target_type ? expr : EmptyCast.Create (expr, target_type);
+
+			var interpolated_string = expr as InterpolatedString;
+			if (interpolated_string != null) {
+				if (target_type == ec.Module.PredefinedTypes.IFormattable.TypeSpec || target_type == ec.Module.PredefinedTypes.FormattableString.TypeSpec)
+					return interpolated_string.ConvertTo (ec, target_type);
+			}
 
 			return null;
 		}

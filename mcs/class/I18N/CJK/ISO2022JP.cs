@@ -379,11 +379,9 @@ namespace I18N.CJK
 					SwitchMode (bytes, ref byteIndex, ref byteCount, ref m, ISO2022JPMode.ASCII);
 					value = (int) ch;
 				} else {
-#if NET_2_0
 					HandleFallback (
 						chars, ref i, ref charCount,
 						bytes, ref byteIndex, ref byteCount, this);
-#endif
 					// skip non-convertible character
 					continue;
 				}
@@ -525,10 +523,8 @@ namespace I18N.CJK
 				}
 				else
 				{
-#if NET_2_0
 					HandleFallback (chars, ref i, ref charCount,
 						bytes, ref byteIndex, ref byteCount, this);
-#endif
 					// skip non-convertible character
 					continue;
 				}
@@ -578,13 +574,11 @@ namespace I18N.CJK
 		}
 #endif
 
-#if NET_2_0
 		public override void Reset ()
 		{
 			m = ISO2022JPMode.ASCII;
 			shifted_in_conv = shifted_in_count = false;
 		}
-#endif
 	}
 
 
@@ -696,7 +690,7 @@ namespace I18N.CJK
 						// am so lazy, so reusing jis2sjis
 						int s1 = ((bytes [i] - 1) >> 1) + ((bytes [i] <= 0x5e) ? 0x71 : 0xb1);
 						int s2 = bytes [i + 1] + (((bytes [i] & 1) != 0) ? 0x20 : 0x7e);
-						int v = (s1 - 0x81) * 0xBC;
+						int v = (s1 <= 0x9F ? (s1 - 0x81) : (s1 - 0xc1)) * 0xBC;
 						v += s2 - 0x41;
 
 						int ch = ToChar (v);
@@ -747,13 +741,11 @@ namespace I18N.CJK
 			return charIndex - start;
 		}
 
-#if NET_2_0
 		public override void Reset ()
 		{
 			m = ISO2022JPMode.ASCII;
 			shifted_in_count = shifted_in_conv = false;
 		}
-#endif
 	}
 
 	[Serializable]

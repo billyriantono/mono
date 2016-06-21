@@ -61,17 +61,6 @@ namespace System.Xml.Serialization
 			this.xmlTypeNamespace = xmlTypeNamespace;
 		}
 
-#if !NET_2_0
-		public string ElementName
-		{
-			get { return _elementName; }
-		}
-
-		public string Namespace
-		{
-			get { return _namespace; }
-		}
-#endif
 
 		public string TypeFullName
 		{
@@ -83,7 +72,6 @@ namespace System.Xml.Serialization
 			get { return type.TypeName; }
 		}
 
-#if NET_2_0
 		public string XsdTypeName
 		{
 			get { return XmlType; }
@@ -93,7 +81,6 @@ namespace System.Xml.Serialization
 		{
 			get { return XmlTypeNamespace; }
 		}
-#endif
 
 		internal TypeData TypeData
 		{
@@ -404,13 +391,22 @@ namespace System.Xml.Serialization
 
 		public XmlTypeMapElementInfo GetElement(string name, string ns, int minimalOrder)
 		{
-			if (_elements == null) return null;
+			if (_elements == null)
+				return null;
 
-			foreach (XmlTypeMapElementInfo info in _elements.Values)
-				if (info.ElementName == name && info.Namespace == ns && info.ExplicitOrder >= minimalOrder)
-					return info;
+			XmlTypeMapElementInfo selected = null;
+			foreach (XmlTypeMapElementInfo info in _elements.Values) {
+				if (info.ElementName == name && info.Namespace == ns) {
+					if (info.ExplicitOrder < minimalOrder)
+						continue;
 
-			return null;
+					if (selected == null || selected.ExplicitOrder > info.ExplicitOrder) {
+						selected = info;
+					}
+				}
+			}
+
+			return selected;
 		}
 
 		public XmlTypeMapElementInfo GetElement(string name, string ns)
@@ -650,8 +646,15 @@ namespace System.Xml.Serialization
 			{
 				if (memberValue == null) return null;
 				Type type = memberValue.GetType();
-				foreach (XmlTypeMapElementInfo elem in _itemInfo)
-					if (elem.TypeData.Type == type) return elem;
+				XmlTypeMapElementInfo bestMatch = null;
+				foreach (XmlTypeMapElementInfo elem in _itemInfo) {
+					if (elem.TypeData.Type == type)
+						return elem;
+					if (elem.TypeData.Type.IsAssignableFrom (type) &&
+						(bestMatch == null || elem.TypeData.Type.IsAssignableFrom (bestMatch.TypeData.Type)))
+						bestMatch = elem;
+				}
+				return bestMatch;
 			}
 			return null;
 		}	
@@ -843,20 +846,12 @@ namespace System.Xml.Serialization
 
 			string xmlName = string.Empty;
 			if (IsFlags) {
-#if NET_2_0
 				xmlName = XmlCustomFormatter.FromEnum (value, XmlNames, Values, typeName);
-#else
-				xmlName = XmlCustomFormatter.FromEnum (value, XmlNames, Values);
-#endif
 			}
 
 			if (xmlName.Length == 0) {
-#if NET_2_0
 				throw new InvalidOperationException (string.Format(CultureInfo.CurrentCulture,
 					"'{0}' is not a valid value for {1}.", value, typeName));
-#else
-				return value.ToString (CultureInfo.InvariantCulture);
-#endif
 			}
 			return xmlName;
 		}

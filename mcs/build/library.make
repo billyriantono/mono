@@ -8,6 +8,24 @@
 # All the dep files now land in the same directory so we
 # munge in the library name to keep the files from clashing.
 
+# The including makefile can set the following variables:
+# LIB_MCS_FLAGS - Command line flags passed to mcs.
+# LIB_REFS      - This should be a space separated list of assembly names which are added to the mcs
+#                 command line.
+#
+
+# All dependent libs become dependent dirs for parallel builds
+# Have to rename to handle differences between assembly/directory names
+DEP_LIBS=$(patsubst System.Xml,System.XML,$(LIB_REFS))
+
+_FILTER_OUT = $(foreach x,$(2),$(if $(findstring $(1),$(x)),,$(x)))
+
+LIB_REFS_FULL = $(call _FILTER_OUT,=, $(LIB_REFS))
+LIB_REFS_ALIAS = $(filter-out $(LIB_REFS_FULL),$(LIB_REFS))
+
+LIB_MCS_FLAGS += $(patsubst %,-r:$(topdir)/class/lib/$(PROFILE)/%.dll,$(LIB_REFS_FULL))
+LIB_MCS_FLAGS += $(patsubst %,-r:%.dll, $(subst =,=$(topdir)/class/lib/$(PROFILE)/,$(LIB_REFS_ALIAS)))
+
 sourcefile = $(LIBRARY).sources
 
 # If the directory contains the per profile include file, generate list file.
@@ -17,24 +35,11 @@ PROFILE_excludes = $(wildcard $(PROFILE)_$(LIBRARY).exclude.sources)
 sourcefile = $(depsdir)/$(PROFILE)_$(LIBRARY).sources
 library_CLEAN_FILES += $(sourcefile)
 
-ifdef EXTENSION_MODULE
-EXTENSION_include = $(wildcard $(topdir)/../../mono-extensions/mcs/$(thisdir)/$(PROFILE)_$(LIBRARY).sources)
-else
-EXTENSION_include = $(wildcard $(PROFILE)_opt_$(LIBRARY).sources)
-endif
-
-
-ifdef EXTENSION_MODULE
-EXTENSION_exclude = $(wildcard $(topdir)/../../mono-extensions/mcs/$(thisdir)/$(PROFILE)_$(LIBRARY).exclude.sources)
-else
-EXTENSION_exclude = $(wildcard $(PROFILE)_opt_$(LIBRARY).exclude.sources)
-endif
-
 # Note, gensources.sh can create a $(sourcefile).makefrag if it sees any '#include's
 # We don't include it in the dependencies since it isn't always created
-$(sourcefile): $(PROFILE_sources) $(PROFILE_excludes) $(topdir)/build/gensources.sh $(EXTENSION_include)
+$(sourcefile): $(PROFILE_sources) $(PROFILE_excludes) $(topdir)/build/gensources.sh
 	@echo Creating the per profile list $@ ...
-	$(SHELL) $(topdir)/build/gensources.sh $@ '$(PROFILE_sources)' '$(PROFILE_excludes)' '$(EXTENSION_include)' '$(EXTENSION_exclude)'
+	$(SHELL) $(topdir)/build/gensources.sh $@ '$(PROFILE_sources)' '$(PROFILE_excludes)'
 endif
 
 PLATFORM_excludes := $(wildcard $(LIBRARY).$(PLATFORM)-excludes)
@@ -46,7 +51,7 @@ endif
 endif
 
 ifndef response
-response = $(depsdir)/$(PROFILE)_$(LIBRARY).response
+response = $(depsdir)/$(PROFILE)_$(LIBRARY_SUBDIR)_$(LIBRARY).response
 library_CLEAN_FILES += $(response)
 endif
 
@@ -66,6 +71,14 @@ else
 the_libdir_base = $(topdir)/class/$(lib_dir)/$(PROFILE)/
 endif
 
+ifdef RESOURCE_STRINGS
+ifdef BOOTSTRAP_PROFILE
+ifneq (basic, $(BUILD_TOOLS_PROFILE))
+RESOURCE_STRINGS_FILES += $(RESOURCE_STRINGS:%=--resourcestrings:%)
+endif
+endif
+endif
+
 #
 # The bare directory contains the plain versions of System and System.Xml
 #
@@ -79,14 +92,10 @@ secxml_libdir = $(the_libdir_base)secxml
 
 the_libdir = $(the_libdir_base)$(intermediate)
 
-ifdef LIBRARY_NEEDS_POSTPROCESSING
-build_libdir = fixup/$(PROFILE)/
-else
 ifdef LIBRARY_USE_INTERMEDIATE_FILE
 build_libdir = $(the_libdir)tmp/
 else
 build_libdir = $(the_libdir)
-endif
 endif
 
 the_lib   = $(the_libdir)$(LIBRARY_NAME)
@@ -125,8 +134,9 @@ endif
 csproj-local: csproj-library csproj-test
 
 intermediate_clean=$(subst /,-,$(intermediate))
-csproj-library: 
+csproj-library:
 	config_file=`basename $(LIBRARY) .dll`-$(intermediate_clean)$(PROFILE).input; \
+	case "$(thisdir)" in *"Facades"*) config_file=Facades_$$config_file;; esac; \
 	echo $(thisdir):$$config_file >> $(topdir)/../msvc/scripts/order; \
 	(echo $(is_boot); \
 	echo $(USE_MCS_FLAGS) $(LIBRARY_FLAGS) $(LIB_MCS_FLAGS); \
@@ -135,6 +145,7 @@ csproj-library:
 	echo $(build_lib); \
 	echo $(FRAMEWORK_VERSION); \
 	echo $(PROFILE); \
+	echo $(RESOURCE_DEFS); \
 	echo $(response)) > $(topdir)/../msvc/scripts/inputs/$$config_file
 
 csproj-test:
@@ -206,7 +217,28 @@ clean-local:
 test-local run-test-local run-test-ondotnet-local:
 	@:
 
-DISTFILES = $(wildcard *$(LIBRARY)*.sources) $(EXTRA_DISTFILES)
+#
+# RESOURCES_DEFS is a list of ID,FILE pairs separated by spaces
+# for each of those, generate a rule that produces ID.resource from
+# FILE using the resgen tool, adds the generated file to CLENA_FILES and
+# passes the resource to the compiler
+#
+ccomma = ,
+define RESOURCE_template
+$(1).resources: $(2)
+	$(RESGEN) "$$<" "$$@"
+
+GEN_RESOURCE_DEPS += $(1).resources
+GEN_RESOURCE_FLAGS += -resource:$(1).resources
+CLEAN_FILES += $(1).resources
+DIST_LISTED_RESOURCES += $(2)
+endef
+
+ifdef RESOURCE_DEFS
+$(foreach pair,$(RESOURCE_DEFS), $(eval $(call RESOURCE_template,$(word 1, $(subst $(ccomma), ,$(pair))), $(word 2, $(subst $(ccomma), ,$(pair))))))
+endif
+
+DISTFILES = $(wildcard *$(LIBRARY)*.sources) $(EXTRA_DISTFILES) $(DIST_LISTED_RESOURCES)
 
 ASSEMBLY      = $(LIBRARY)
 ASSEMBLY_EXT  = .dll
@@ -226,6 +258,7 @@ csproj-test:
 	echo $(test_lib); \
 	echo $(FRAMEWORK_VERSION); \
 	echo $(PROFILE); \
+	echo ""; \
 	echo $(test_response)) > $(topdir)/../msvc/scripts/inputs/$$config_file
 
 endif
@@ -236,19 +269,13 @@ dist-local: dist-default
 	for f in `$(topdir)/tools/removecomments.sh $(wildcard *$(LIBRARY).sources)` $(TEST_FILES) ; do \
 	  case $$f in \
 	  ../*) : ;; \
+	  *.g.cs) : ;; \
 	  *) dest=`dirname "$$f"` ; \
 	     case $$subs in *" $$dest "*) : ;; *) subs=" $$dest$$subs" ; $(MKINSTALLDIRS) $(distdir)/$$dest ;; esac ; \
 	     cp -p "$$f" $(distdir)/$$dest || exit 1 ;; \
 	  esac ; done ; \
 	for d in . $$subs ; do \
 	  case $$d in .) : ;; *) test ! -f $$d/ChangeLog || cp -p $$d/ChangeLog $(distdir)/$$d ;; esac ; done
-
-ifdef LIBRARY_NEEDS_POSTPROCESSING
-dist-local: dist-fixup
-FIXUP_PROFILES = default net_2_0
-dist-fixup:
-	$(MKINSTALLDIRS) $(distdir)/fixup $(FIXUP_PROFILES:%=$(distdir)/fixup/%)
-endif
 
 ifndef LIBRARY_COMPILE
 LIBRARY_COMPILE = $(CSCOMPILE)
@@ -271,8 +298,11 @@ endif
 
 $(the_lib): $(the_libdir)/.stamp
 
-$(build_lib): $(response) $(sn) $(BUILT_SOURCES) $(build_libdir:=/.stamp)
-	$(LIBRARY_COMPILE) $(LIBRARY_FLAGS) $(LIB_MCS_FLAGS) -target:library -out:$@ $(BUILT_SOURCES_cmdline) @$(response)
+$(build_lib): $(response) $(sn) $(BUILT_SOURCES) $(build_libdir:=/.stamp) $(GEN_RESOURCE_DEPS)
+	$(LIBRARY_COMPILE) $(LIBRARY_FLAGS) $(LIB_MCS_FLAGS) $(GEN_RESOURCE_FLAGS) -target:library -out:$@ $(BUILT_SOURCES_cmdline) @$(response)
+ifdef RESOURCE_STRINGS_FILES
+	$(Q) $(STRING_REPLACER) $(RESOURCE_STRINGS_FILES) $@
+endif
 	$(Q) $(SN) -R $@ $(LIBRARY_SNK)
 
 ifdef LIBRARY_USE_INTERMEDIATE_FILE
@@ -287,19 +317,15 @@ library_CLEAN_FILES += $(PROFILE)_aot.log
 
 ifdef PLATFORM_AOT_SUFFIX
 Q_AOT=$(if $(V),,@echo "AOT     [$(PROFILE)] $(notdir $(@))";)
+
 $(the_lib)$(PLATFORM_AOT_SUFFIX): $(the_lib)
-	$(Q_AOT) MONO_PATH='$(the_libdir)' > $(PROFILE)_aot.log 2>&1 $(RUNTIME) --aot=bind-to-runtime-version --debug $(the_lib)
+	$(Q_AOT) MONO_PATH='$(the_libdir_base)' > $(PROFILE)_$(LIBRARY_NAME)_aot.log 2>&1 $(RUNTIME) $(AOT_BUILD_FLAGS) --debug $(the_lib)
+
+all-local-aot: $(the_lib)$(PLATFORM_AOT_SUFFIX)
 endif
 
-ifdef ENABLE_AOT
-ifneq (,$(filter $(AOT_IN_PROFILES), $(PROFILE)))
 
-all-local: $(the_lib)$(PLATFORM_AOT_SUFFIX)
-
-endif
-endif
-
-makefrag = $(depsdir)/$(PROFILE)_$(LIBRARY).makefrag
+makefrag = $(depsdir)/$(PROFILE)_$(LIBRARY_SUBDIR)_$(LIBRARY).makefrag
 library_CLEAN_FILES += $(makefrag)
 $(makefrag): $(sourcefile)
 #	@echo Creating $@ ...
@@ -340,9 +366,8 @@ $(makefrag) $(test_response) $(test_makefrag) $(btest_response) $(btest_makefrag
 ## Documentation stuff
 
 Q_MDOC_UP=$(if $(V),,@echo "MDOC-UP [$(PROFILE)] $(notdir $(@))";)
-# net_2_0 is needed because monodoc is only compiled in that profile
 MDOC_UP  =$(Q_MDOC_UP) \
-		MONO_PATH="$(topdir)/class/lib/$(DEFAULT_PROFILE)$(PLATFORM_PATH_SEPARATOR)$(topdir)/class/lib/net_2_0$(PLATFORM_PATH_SEPARATOR)$$MONO_PATH" $(RUNTIME) $(topdir)/class/lib/$(DEFAULT_PROFILE)/mdoc.exe \
+		MONO_PATH="$(topdir)/class/lib/$(DEFAULT_PROFILE)$(PLATFORM_PATH_SEPARATOR)$$MONO_PATH" $(RUNTIME) $(topdir)/class/lib/$(DEFAULT_PROFILE)/mdoc.exe \
 		update --delete -o Documentation/en $(the_lib)
 
 doc-update-local: $(the_libdir)/.doc-stamp
@@ -351,3 +376,6 @@ $(the_libdir)/.doc-stamp: $(the_lib)
 	$(MDOC_UP)
 	@echo "doc-stamp" > $@
 
+# Need to be here so it comes after the definition of DEP_DIRS/DEP_LIBS
+gen-deps:
+	@echo "$(DEPS_TARGET_DIR): $(DEP_DIRS) $(DEP_LIBS)" >> $(DEPS_FILE)

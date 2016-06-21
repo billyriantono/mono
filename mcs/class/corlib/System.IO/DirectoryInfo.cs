@@ -62,7 +62,7 @@ namespace System.IO {
 
 			FullPath = Path.GetFullPath (path);
 			if (simpleOriginalPath)
-				OriginalPath = Path.GetFileName (path);
+				OriginalPath = Path.GetFileName (FullPath);
 			else
 				OriginalPath = path;
 
@@ -102,12 +102,13 @@ namespace System.IO {
 
 		public override bool Exists {
 			get {
-				Refresh (false);
+				if (_dataInitialised == -1)
+					Refresh ();
 
-				if (stat.Attributes == MonoIO.InvalidFileAttributes)
+				if (_data.fileAttributes == MonoIO.InvalidFileAttributes)
 					return false;
 
-				if ((stat.Attributes & FileAttributes.Directory) == 0)
+				if ((_data.fileAttributes & FileAttributes.Directory) == 0)
 					return false;
 
 				return true;
@@ -204,9 +205,7 @@ namespace System.IO {
 			return GetFileSystemInfos (searchPattern, SearchOption.TopDirectoryOnly);
 		}
 
-#if NET_4_0
 		public
-#endif
 		FileSystemInfo [] GetFileSystemInfos (string searchPattern, SearchOption searchOption)
 		{
 			if (searchPattern == null)
@@ -356,7 +355,6 @@ namespace System.IO {
 			Directory.SetAccessControl (FullPath, directorySecurity);
 		}
 
-#if NET_4_0
 
 		public IEnumerable<DirectoryInfo> EnumerateDirectories ()
 		{
@@ -461,7 +459,19 @@ namespace System.IO {
 			}
 		}
 		
-		
-#endif
+		internal void CheckPath (string path)
+		{
+			if (path == null)
+				throw new ArgumentNullException ("path");
+			if (path.Length == 0)
+				throw new ArgumentException ("An empty file name is not valid.");
+			if (path.IndexOfAny (Path.InvalidPathChars) != -1)
+				throw new ArgumentException ("Illegal characters in path.");
+			if (Environment.IsRunningOnWindows) {
+				int idx = path.IndexOf (':');
+				if (idx >= 0 && idx != 1)
+					throw new ArgumentException ("path");
+			}
+		}
 	}
 }

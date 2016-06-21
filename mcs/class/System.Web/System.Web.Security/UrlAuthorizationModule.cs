@@ -60,13 +60,7 @@ namespace System.Web.Security
 				return;
 
 			HttpRequest req = context.Request;
-#if NET_2_0
 			AuthorizationSection config = (AuthorizationSection) WebConfigurationManager.GetSection ("system.web/authorization", req.Path, context);
-#else
-			AuthorizationConfig config = (AuthorizationConfig) context.GetConfig ("system.web/authorization");
-			if (config == null)
-				return;
-#endif
 			if (!config.IsValidUser (context.User, req.HttpMethod)) {
 				HttpException e = new HttpException (401, "Unauthorized");
 				HttpResponse response = context.Response;
@@ -77,14 +71,27 @@ namespace System.Web.Security
 			}
 		}
 
-#if NET_2_0
 		public static bool CheckUrlAccessForPrincipal (string virtualPath, IPrincipal user, string verb)
 		{
 			AuthorizationSection config = (AuthorizationSection) WebConfigurationManager.GetSection ("system.web/authorization", virtualPath);
 
 			return config == null ? true : config.IsValidUser (user, verb);
 		}
+
+		internal static void ReportUrlAuthorizationFailure(HttpContext context, object webEventSource) {
+			// Deny access
+			context.Response.StatusCode = 401;
+			context.Response.Write (new HttpException(401, "Unauthorized").GetHtmlErrorMessage ());
+
+#if false // Sys.Web.Mng not implemented on mono.
+			if (context.User != null && context.User.Identity.IsAuthenticated) {
+				// We don't raise failure audit event for anonymous user
+				WebBaseEvent.RaiseSystemEvent(webEventSource, WebEventCodes.AuditUrlAuthorizationFailure);
+			}
 #endif
+			context.ApplicationInstance.CompleteRequest();
+		}
+
 	}
 }
 

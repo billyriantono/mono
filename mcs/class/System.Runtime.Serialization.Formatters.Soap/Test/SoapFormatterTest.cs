@@ -12,6 +12,7 @@ using System.Runtime.Serialization.Formatters.Soap;
 using System.Runtime.Remoting.Metadata.W3cXsd2001;
 using System.IO;
 using NUnit.Framework;
+using System.Collections.Generic;
 
 namespace MonoTests.System.Runtime.Serialization.Formatters.Soap {
 	
@@ -27,7 +28,7 @@ namespace MonoTests.System.Runtime.Serialization.Formatters.Soap {
 		private string _string;
 		private string[] _strings = new string[]{};
 		private Queue _queue = new Queue();
-		public Hashtable _table = new Hashtable();
+		public Dictionary<object, object> _table = new Dictionary<object, object> ();
 
 		public string ObjString {
 			get { return _string; }
@@ -56,25 +57,12 @@ namespace MonoTests.System.Runtime.Serialization.Formatters.Soap {
 			MoreComplexObject objReturn = obj as MoreComplexObject;
 			if(objReturn == null) return false;
 			if(objReturn._string != this._string) return false;
-			IEnumerator myEnum = this._table.GetEnumerator();
-			foreach(DictionaryEntry e in objReturn._table) {
-				myEnum.MoveNext();
-				DictionaryEntry s = (DictionaryEntry) myEnum.Current;
-				Assertion.AssertEquals("#_table", s.Key, e.Key);
-				Assertion.AssertEquals("#_table", s.Value, e.Value);
-				if(s.Key.ToString() != e.Key.ToString() || s.Value.ToString() != e.Value.ToString()) return false;
+
+			Assert.AreEqual (_table.Count, objReturn._table.Count, "#1");
+			foreach(var e in objReturn._table) {
+				Assert.AreEqual (e.Value, _table[e.Key], e.Key.ToString ());
 			}
-//			Assertion.Assert("#_table is null", objReturn._table != null);
-//			Console.WriteLine("_table[foo]: {0}", objReturn._table["foo"]);
-//			Assertion.AssertEquals("#_table[\"foo\"]", "barr", objReturn._table["foo"]);
-//			Console.WriteLine("_table[1]: {0}", objReturn._table[1]);
-//			Assertion.AssertEquals("#_table[1]", "foo", objReturn._table[1]);
-//			Console.WriteLine("_table['c']: {0}", objReturn._table['c']);
-//			Assertion.AssertEquals("#_table['c']", "barr", objReturn._table['c']);
-//			Console.WriteLine("_table[barr]: {0}", objReturn._table["barr"]);
-//			Assertion.AssertEquals("#_table[\"barr\"]", 1234567890, objReturn._table["barr"]);
 			return SoapFormatterTest.CheckArray(this._queue.ToArray(), objReturn._queue.ToArray());
-			
 		}
 		
 	}
@@ -183,8 +171,8 @@ namespace MonoTests.System.Runtime.Serialization.Formatters.Soap {
 		
 		private object Serialize(object objGraph) {
 			MemoryStream stream = new MemoryStream();
-			Assertion.Assert(objGraph != null);
-			Assertion.Assert(stream != null);
+			Assert.IsTrue(objGraph != null);
+			Assert.IsTrue(stream != null);
 			_soapFormatter.SurrogateSelector = _surrogate;
 			_soapFormatter.Serialize(stream, objGraph);
 			
@@ -194,8 +182,8 @@ namespace MonoTests.System.Runtime.Serialization.Formatters.Soap {
 			stream.Position = 0;
 			
 			object objReturn = _soapFormatterDeserializer.Deserialize(stream);
-			Assertion.Assert(objReturn != null);
-			Assertion.AssertEquals("#Tests "+objGraph.GetType(), objGraph.GetType(), objReturn.GetType());
+			Assert.IsTrue(objReturn != null);
+			Assert.AreEqual(objGraph.GetType(), objReturn.GetType(), "#Tests "+objGraph.GetType());
 			stream = new MemoryStream();
 			_soapFormatter.Serialize(stream, objReturn);
 			stream.Position = 0;
@@ -221,19 +209,19 @@ namespace MonoTests.System.Runtime.Serialization.Formatters.Soap {
 		public void TestValueTypes() {
 			object objReturn;
 			objReturn = Serialize((short)1);
-			Assertion.AssertEquals("#int16", objReturn, 1);
+			Assert.AreEqual(objReturn, 1, "#int16");
 			objReturn = Serialize(1);
-			Assertion.AssertEquals("#int32", objReturn, 1);
+			Assert.AreEqual(objReturn, 1, "#int32");
 			objReturn = Serialize((Single)0.1234);
-			Assertion.AssertEquals("#Single", objReturn, 0.123400003f);
+			Assert.AreEqual(objReturn, 0.123400003f, "#Single");
 			objReturn = Serialize((Double)1234567890.0987654321);
-			Assertion.AssertEquals("#iDouble", objReturn, 1234567890.0987654321);
+			Assert.AreEqual(objReturn, 1234567890.0987654321, "#iDouble");
 			objReturn = Serialize(true);
-			Assertion.AssertEquals("#Bool", objReturn, true);
+			Assert.AreEqual(objReturn, true, "#Bool");
 			objReturn = Serialize((Int64) 1234567890);
-			Assertion.AssertEquals("#Int64", objReturn, 1234567890);
+			Assert.AreEqual(objReturn, 1234567890, "#Int64");
 			objReturn = Serialize('c');
-			Assertion.AssertEquals("#Char", objReturn, 'c');
+			Assert.AreEqual(objReturn, 'c', "#Char");
 		}
 		
 		[Test]
@@ -241,7 +229,7 @@ namespace MonoTests.System.Runtime.Serialization.Formatters.Soap {
 			object objReturn;
 			objReturn = Serialize("");
 			objReturn = Serialize("hello world!");
-			Assertion.AssertEquals("#string", "hello world!", objReturn);
+			Assert.AreEqual("hello world!", objReturn, "#string");
 			SoapMessage soapMsg = new SoapMessage();
 			soapMsg.Headers = new Header[0];
 			soapMsg.MethodName = "Equals";
@@ -254,19 +242,19 @@ namespace MonoTests.System.Runtime.Serialization.Formatters.Soap {
 			_soapFormatterDeserializer.TopObject = null;
 			SimpleObject obj = new SimpleObject("simple object", 1);
 			objReturn = Serialize(obj);
-			Assertion.AssertEquals("#SimpleObject", obj, objReturn);
+			Assert.AreEqual(obj, objReturn, "#SimpleObject");
 			objReturn = Serialize(typeof(SimpleObject));
-			Assertion.AssertEquals("#Type", typeof(SimpleObject), (Type)objReturn);
+			Assert.AreEqual(typeof(SimpleObject), (Type)objReturn, "#Type");
 			objReturn = Serialize(obj.GetType().Assembly);
-			Assertion.AssertEquals("#Assembly", obj.GetType().Assembly, objReturn);
+			Assert.AreEqual(obj.GetType().Assembly, objReturn, "#Assembly");
 		}
 		
 		public static bool CheckArray(object objTest, object objReturn) {
 			Array objTestAsArray = objTest as Array;
 			Array objReturnAsArray = objReturn as Array;
 			
-			Assertion.Assert("#Not an Array "+objTest, objReturnAsArray != null);
-			Assertion.AssertEquals("#Different lengths "+objTest, objTestAsArray.Length, objReturnAsArray.Length);
+			Assert.IsTrue(objReturnAsArray != null, "#Not an Array "+objTest);
+			Assert.AreEqual(objTestAsArray.Length, objReturnAsArray.Length, "#Different lengths "+objTest);
 			
 			IEnumerator iEnum = objReturnAsArray.GetEnumerator();
 			iEnum.Reset();
@@ -274,7 +262,7 @@ namespace MonoTests.System.Runtime.Serialization.Formatters.Soap {
 			foreach(object obj1 in objTestAsArray) {
 				iEnum.MoveNext();
 				obj2 = iEnum.Current;
-				Assertion.AssertEquals("#The content of the 2 arrays is different", obj1, obj2);
+				Assert.AreEqual(obj1, obj2, "#The content of the 2 arrays is different");
 			}
 			
 			return true;
@@ -327,9 +315,9 @@ namespace MonoTests.System.Runtime.Serialization.Formatters.Soap {
 			MoreComplexObject objReturn;
 			MoreComplexObject objTest = new MoreComplexObject();
 			objReturn = (MoreComplexObject) Serialize(objTest);
-			Assertion.AssertEquals("#Equals", objTest, objReturn);
+			Assert.AreEqual(objTest, objReturn, "#Equals");
 			objReturn.OnTrucEvent("bidule");
-			Assertion.AssertEquals("#dlg", "bidule", objReturn.ObjString);
+			Assert.AreEqual("bidule", objReturn.ObjString, "#dlg");
 		}
 
 		[Test]
@@ -345,9 +333,9 @@ namespace MonoTests.System.Runtime.Serialization.Formatters.Soap {
 			_soapFormatterDeserializer.Binder = new Version1ToVersion2Binder();
 			objReturn = _soapFormatterDeserializer.Deserialize(stream);
 
-			Assertion.AssertEquals("#Version1 Version2", "Version2", objReturn.GetType().Name);
-			Assertion.AssertEquals("#_value", 123, ((Version2) objReturn)._value);
-			Assertion.AssertEquals("#_foo", "Default value", ((Version2) objReturn)._foo);
+			Assert.AreEqual("Version2", objReturn.GetType().Name, "#Version1 Version2");
+			Assert.AreEqual(123, ((Version2) objReturn)._value, "#_value");
+			Assert.AreEqual("Default value", ((Version2) objReturn)._foo, "#_foo");
 		}
 		
 		[Test]
@@ -372,17 +360,17 @@ namespace MonoTests.System.Runtime.Serialization.Formatters.Soap {
 			sf.TopObject = t;
 			t = (SoapMessage) sf.Deserialize (ms);
 			
-			Assertion.AssertNotNull ("#1", t.Headers[0].Value);
-			Assertion.AssertEquals ("#2", t.Headers[0].Value.GetType (), typeof(Type[]));
+			Assert.IsNotNull (t.Headers[0].Value, "#1");
+			Assert.AreEqual (t.Headers[0].Value.GetType (), typeof(Type[]), "#2");
 			
 			Type[] ts = (Type[]) t.Headers[0].Value;
 			
-			Assertion.AssertEquals ("#3", 2, ts.Length);
-			Assertion.AssertNotNull ("#4", ts[0]);
-			Assertion.AssertNotNull ("#5", ts[1]);
+			Assert.AreEqual (2, ts.Length, "#3");
+			Assert.IsNotNull (ts[0], "#4");
+			Assert.IsNotNull (ts[1], "#5");
 			Console.WriteLine ("PPP:" + ts[0].GetType());
-			Assertion.AssertEquals ("#6", typeof(string), ts[0]);
-			Assertion.AssertEquals ("#7", typeof(SignatureTest[]), ts[1]);
+			Assert.AreEqual (typeof(string), ts[0], "#6");
+			Assert.AreEqual (typeof(SignatureTest[]), ts[1], "#7");
 		}
 
 		[Test]
@@ -410,14 +398,14 @@ namespace MonoTests.System.Runtime.Serialization.Formatters.Soap {
 			public void OnDeserialization (StreamingContext context)
 			{
 				var ci = Thread.CurrentThread.CurrentCulture;
-				Assertion.AssertEquals("#1", "German (Germany)", ci.EnglishName);
+				Assert.AreEqual("German (Germany)", ci.EnglishName, "#1");
 			}
 			
 			[OnSerialized]
 			public void OnSerialized (StreamingContext context)
 			{
 				var ci = Thread.CurrentThread.CurrentCulture;
-				Assertion.AssertEquals("#2", "German (Germany)", ci.EnglishName);
+				Assert.AreEqual("German (Germany)", ci.EnglishName, "#2");
 			}
 		}
 	}

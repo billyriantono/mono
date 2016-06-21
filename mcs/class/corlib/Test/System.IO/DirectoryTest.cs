@@ -17,7 +17,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 
-#if !MONOTOUCH
+#if !MONOTOUCH && !MOBILE_STATIC
 using Mono.Unix;
 #endif
 using NUnit.Framework;
@@ -47,7 +47,7 @@ public class DirectoryTest
 		if (Directory.Exists (TempFolder))
 			Directory.Delete (TempFolder, true);
 	}
-#if !MONOTOUCH
+#if !MONOTOUCH && !MOBILE_STATIC
 	[Test] //BXC #12461
 	public void EnumerateFilesListSymlinks ()
 	{
@@ -69,13 +69,11 @@ public class DirectoryTest
 		Assert.AreEqual (afile, files0 [0], "#2");
 		Assert.AreEqual (bfile, files0 [1], "#3");
 
-#if NET_4_0
 		var files1 = new List<string> (Directory.EnumerateFiles (TempFolder, "*.src")).ToArray ();
 		Array.Sort (files1);
 		Assert.AreEqual (2, files1.Length, "#1.b");
 		Assert.AreEqual (afile, files1 [0], "#2.b");
 		Assert.AreEqual (bfile, files1 [1], "#3.b");
-#endif
 
 		var files2 = Directory.GetFileSystemEntries (TempFolder, "*.src");
 		Array.Sort (files2);
@@ -84,14 +82,12 @@ public class DirectoryTest
 		Assert.AreEqual (bfile, files2 [1], "#3.c");
 		Assert.AreEqual (cdir, files2 [2], "#4.c");
 
-#if NET_4_0
 		var files3 = new List<string> (Directory.EnumerateFileSystemEntries (TempFolder, "*.src")).ToArray ();
 		Array.Sort (files3);
 		Assert.AreEqual (3, files3.Length, "#1.d");
 		Assert.AreEqual (afile, files3 [0], "#2.d");
 		Assert.AreEqual (bfile, files3 [1], "#3.d");
 		Assert.AreEqual (cdir, files3 [2], "#4.d");
-#endif
 	}
 #endif
 	[Test]
@@ -222,22 +218,27 @@ public class DirectoryTest
 			fstream.Close();
 
 			DirectoryInfo dinfo = Directory.CreateDirectory (path);
-#if NET_2_0
 			Assert.Fail ("#1");
 		} catch (IOException ex) {
 			Assert.AreEqual (typeof (IOException), ex.GetType (), "#2");
 			// exception message contains the path
 			Assert.IsTrue (ex.Message.Contains (path), "#3");
 			Assert.IsNull (ex.InnerException, "#4");
-#else
-			Assert.IsFalse (dinfo.Exists, "#2");
-			Assert.IsTrue (dinfo.FullName.EndsWith ("DirectoryTest.Test.ExistsAsFile"), "#3");
-			Assert.AreEqual ("DirectoryTest.Test.ExistsAsFile", dinfo.Name, "#4");
-#endif
 		} finally {
 			DeleteDirectory (path);
 			DeleteFile (path);
 		}
+	}
+
+	[Test]
+	public void CreateDirectoryRelativePath ()
+	{
+		var path = Path.Combine (TempFolder, "relativepath", "not_this_folder");
+		path = Path.Combine (path, "..");
+
+		var res = Directory.CreateDirectory (path);
+		Assert.AreEqual ("relativepath", res.ToString (), "#1");
+		Assert.IsTrue (Directory.Exists (Path.Combine (TempFolder, "relativepath")), "#2");
 	}
 
 	[Test]
@@ -399,9 +400,6 @@ public class DirectoryTest
 	}
 	
 	[Test]
-#if !NET_2_0
-	[ExpectedException(typeof(IOException))]
-#endif
 	public void GetCreationTimeException_NonExistingPath ()
 	{
 		string path = TempFolder + DSC + "DirectoryTest.GetCreationTime.1";
@@ -409,7 +407,6 @@ public class DirectoryTest
 		try {
 			DateTime time = Directory.GetCreationTime (path);
 
-#if NET_2_0
 			DateTime expectedTime = (new DateTime (1601, 1, 1)).ToLocalTime ();
 			Assert.AreEqual (expectedTime.Year, time.Year, "#1");
 			Assert.AreEqual (expectedTime.Month, time.Month, "#2");
@@ -417,7 +414,6 @@ public class DirectoryTest
 			Assert.AreEqual (expectedTime.Hour, time.Hour, "#4");
 			Assert.AreEqual (expectedTime.Second, time.Second, "#5");
 			Assert.AreEqual (expectedTime.Millisecond, time.Millisecond, "#6");
-#endif
 		} finally {
 			DeleteDirectory (path);
 		}
@@ -452,9 +448,6 @@ public class DirectoryTest
 	}
 	
 	[Test]
-#if !NET_2_0
-	[ExpectedException (typeof (IOException))]
-#endif
 	public void GetCreationTimeUtc_NonExistingPath ()
 	{
 		string path = TempFolder + DSC + "DirectoryTest.GetCreationTimeUtc.1";
@@ -463,14 +456,12 @@ public class DirectoryTest
 		try {
 			DateTime time = Directory.GetCreationTimeUtc (path);
 
-#if NET_2_0
 			Assert.AreEqual (1601, time.Year, "#1");
 			Assert.AreEqual (1, time.Month, "#2");
 			Assert.AreEqual (1, time.Day, "#3");
 			Assert.AreEqual (0, time.Hour, "#4");
 			Assert.AreEqual (0, time.Second, "#5");
 			Assert.AreEqual (0, time.Millisecond, "#6");
-#endif
 		} finally {
 			DeleteDirectory (path);
 		}
@@ -505,9 +496,6 @@ public class DirectoryTest
 	}
 	
 	[Test]
-#if !NET_2_0
-	[ExpectedException (typeof (IOException))]
-#endif
 	public void GetLastAccessTime_NonExistingPath ()
 	{
 		string path = TempFolder + DSC + "DirectoryTest.GetLastAccessTime.1";
@@ -516,7 +504,6 @@ public class DirectoryTest
 		try {
 			DateTime time = Directory.GetLastAccessTime (path);
 
-#if NET_2_0
 			DateTime expectedTime = (new DateTime (1601, 1, 1)).ToLocalTime ();
 			Assert.AreEqual (expectedTime.Year, time.Year, "#1");
 			Assert.AreEqual (expectedTime.Month, time.Month, "#2");
@@ -524,7 +511,6 @@ public class DirectoryTest
 			Assert.AreEqual (expectedTime.Hour, time.Hour, "#4");
 			Assert.AreEqual (expectedTime.Second, time.Second, "#5");
 			Assert.AreEqual (expectedTime.Millisecond, time.Millisecond, "#6");
-#endif
 		} finally {
 			DeleteDirectory (path);
 		}
@@ -559,9 +545,6 @@ public class DirectoryTest
 	}
 	
 	[Test]
-#if !NET_2_0
-	[ExpectedException (typeof (IOException))]
-#endif
 	public void GetLastAccessTimeUtc_NonExistingPath ()
 	{
 		string path = TempFolder + DSC + "DirectoryTest.GetLastAccessTimeUtc.1";
@@ -569,14 +552,12 @@ public class DirectoryTest
 		try {
 			DateTime time = Directory.GetLastAccessTimeUtc (path);
 
-#if NET_2_0
 			Assert.AreEqual (1601, time.Year, "#1");
 			Assert.AreEqual (1, time.Month, "#2");
 			Assert.AreEqual (1, time.Day, "#3");
 			Assert.AreEqual (0, time.Hour, "#4");
 			Assert.AreEqual (0, time.Second, "#5");
 			Assert.AreEqual (0, time.Millisecond, "#6");
-#endif
 		} finally {
 			DeleteDirectory (path);
 		}
@@ -611,9 +592,6 @@ public class DirectoryTest
 	}
 	
 	[Test]
-#if !NET_2_0
-	[ExpectedException (typeof (IOException))]
-#endif
 	public void GetLastWriteTime_NonExistingPath ()
 	{
 		string path = TempFolder + DSC + "DirectoryTest.GetLastWriteTime.1";
@@ -621,7 +599,6 @@ public class DirectoryTest
 		try {
 			DateTime time = Directory.GetLastWriteTime (path);
 
-#if NET_2_0
 			DateTime expectedTime = (new DateTime (1601, 1, 1)).ToLocalTime ();
 			Assert.AreEqual (expectedTime.Year, time.Year, "#1");
 			Assert.AreEqual (expectedTime.Month, time.Month, "#2");
@@ -629,7 +606,6 @@ public class DirectoryTest
 			Assert.AreEqual (expectedTime.Hour, time.Hour, "#4");
 			Assert.AreEqual (expectedTime.Second, time.Second, "#5");
 			Assert.AreEqual (expectedTime.Millisecond, time.Millisecond, "#6");
-#endif
 		} finally {
 			DeleteDirectory (path);
 		}
@@ -664,9 +640,6 @@ public class DirectoryTest
 	}
 	
 	[Test]
-#if !NET_2_0
-	[ExpectedException (typeof (IOException))]
-#endif
 	public void GetLastWriteTimeUtc_NonExistingPath ()
 	{
 		string path = TempFolder + DSC + "DirectoryTest.GetLastWriteTimeUtc.1";
@@ -674,14 +647,12 @@ public class DirectoryTest
 		try {
 			DateTime time = Directory.GetLastWriteTimeUtc (path);
 
-#if NET_2_0
 			Assert.AreEqual (1601, time.Year, "#1");
 			Assert.AreEqual (1, time.Month, "#2");
 			Assert.AreEqual (1, time.Day, "#3");
 			Assert.AreEqual (0, time.Hour, "#4");
 			Assert.AreEqual (0, time.Second, "#5");
 			Assert.AreEqual (0, time.Millisecond, "#6");
-#endif
 		} finally {
 			DeleteDirectory (path);
 		}

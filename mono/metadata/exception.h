@@ -1,9 +1,6 @@
 #ifndef _MONO_METADATA_EXCEPTION_H_
 #define _MONO_METADATA_EXCEPTION_H_
 
-/* here for compat: should not be used anymore */
-#define MONO_ARCH_SAVE_REGS 
-
 #include <mono/metadata/object.h>
 #include <mono/metadata/image.h>
 
@@ -17,6 +14,7 @@ mono_exception_from_name               (MonoImage *image,
 MONO_API MonoException *
 mono_exception_from_token              (MonoImage *image, uint32_t token);
 
+MONO_RT_EXTERNAL_ONLY
 MONO_API MonoException *
 mono_exception_from_name_two_strings (MonoImage *image, const char *name_space,
 				      const char *name, MonoString *a1, MonoString *a2);
@@ -25,6 +23,7 @@ MONO_API MonoException *
 mono_exception_from_name_msg	       (MonoImage *image, const char *name_space,
 					const char *name, const char *msg);
 
+MONO_RT_EXTERNAL_ONLY
 MONO_API MonoException *
 mono_exception_from_token_two_strings (MonoImage *image, uint32_t token,
 						   MonoString *a1, MonoString *a2);
@@ -109,6 +108,7 @@ mono_get_exception_file_not_found        (MonoString *fname);
 MONO_API MonoException *
 mono_get_exception_file_not_found2       (const char *msg, MonoString *fname);
 
+MONO_RT_EXTERNAL_ONLY
 MONO_API MonoException *
 mono_get_exception_type_initialization (const char *type_name, MonoException *inner);
 
@@ -139,9 +139,11 @@ mono_get_exception_field_access (void);
 MONO_API MonoException *
 mono_get_exception_method_access (void);
 
+MONO_RT_EXTERNAL_ONLY
 MONO_API MonoException *
 mono_get_exception_reflection_type_load (MonoArray *types, MonoArray *exceptions);
 
+MONO_RT_EXTERNAL_ONLY
 MONO_API MonoException *
 mono_get_exception_runtime_wrapped (MonoObject *wrapped_exception);
 
